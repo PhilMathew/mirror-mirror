@@ -1,0 +1,15 @@
+name: unlearning
+channels:
+  - defaults
+dependencies:
+  - python
+  - torchaudio
+  - cpuonly
+  - torchvision
+  - pytorch
+  - seaborn
+  - pandas
+  - plotly
+  - matplotlib
+  - tqdm
+prefix: /home/phil/anaconda3/envs/unlearning
