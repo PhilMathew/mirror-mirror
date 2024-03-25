@@ -3,13 +3,13 @@ channels:
   - defaults
 dependencies:
   - python
-  - torchaudio
-  - cpuonly
   - torchvision
-  - pytorch
-  - seaborn
   - pandas
+  - pytorch-cuda=12.1
   - plotly
-  - matplotlib
   - tqdm
+  - torchaudio
+  - pytorch
+  - matplotlib
+  - seaborn
 prefix: /home/phil/anaconda3/envs/unlearning
