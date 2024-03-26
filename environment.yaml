@@ -12,4 +12,5 @@ dependencies:
   - pytorch
   - matplotlib
   - seaborn
+  - scikit-learn
 prefix: /home/phil/anaconda3/envs/unlearning
