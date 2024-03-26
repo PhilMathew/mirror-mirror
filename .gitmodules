@@ -1,0 +1,3 @@
+[submodule "unlearning_frameworks/selective-synaptic-dampening"]
+	path = unlearning_frameworks/selective-synaptic-dampening
+	url = https://github.com/if-loops/selective-synaptic-dampening.git
