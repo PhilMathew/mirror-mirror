@@ -2,40 +2,18 @@ from argparse import ArgumentParser
 import json
 from tqdm import tqdm
 from pathlib import Path
-import torchvision
-from torchvision.models.resnet import BasicBlock, Bottleneck
+from torchvision.models.resnet import Bottleneck
 import torch
-from torchvision.datasets import MNIST, CIFAR10, CIFAR100
-from torchvision import transforms
 from torch import nn
 from torch.utils.data import Dataset, DataLoader, Subset
 from torch.nn import functional as F
 from typing import *
 import pandas as pd
+from sklearn.metrics import confusion_matrix
 
 from resnet import ResNet
 from plot_utils import plot_history, plot_confmat
-from sklearn.metrics import confusion_matrix
-
-
-def init_full_ds(ds_type: str) -> Tuple[Dataset, Dataset]:
-    transform = transforms.Compose(
-        [
-            transforms.ToTensor(), 
-            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-        ]
-    )
-    match ds_type:
-        case 'MNIST':
-            train_ds, test_ds = MNIST('./data', transform=transform, download=True), MNIST('./data', train=False, transform=transform, download=True)
-        case 'CIFAR10':
-            train_ds, test_ds = CIFAR10('./data', transform=transform, download=True), CIFAR10('./data', train=False, transform=transform, download=True)
-        case 'CIFAR100':
-            train_ds, test_ds = CIFAR100('./data', transform=transform, download=True), CIFAR100('./data', train=False, transform=transform, download=True)
-        case _:
-            raise ValueError(f'{ds_type} is an invalid dataset type') 
-    
-    return train_ds, test_ds
+from datasets import init_full_ds
 
 
 def build_model(num_classes: int, in_channels: int) -> ResNet:
@@ -206,6 +184,7 @@ def main():
     # Initialize and train M1 (full dataset) and M3 (only the retain set)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     m1, m3 = build_model(num_classes, in_channels), build_model(num_classes, in_channels)
+    print('Training M1')
     m1_hist = train_model(
         model=m1,
         train_ds=full_train_ds,
@@ -214,6 +193,7 @@ def main():
         num_epochs=args.num_epochs,
         lr=args.learning_rate
     )
+    print('Training M3')
     m3_hist = train_model(
         model=m3,
         train_ds=retain_ds,
@@ -226,22 +206,42 @@ def main():
     # Save out M1-related stuff
     m1_dir = output_dir / 'm1'
     m1_dir.mkdir(exist_ok=True)
-    torch.save(m1.state_dict(), str(m1_dir)) # model
+    torch.save(m1.state_dict(), str(m1_dir / 'm1_state_dict.pt')) # model
     with open(str(m1_dir / 'm1_train_hist.json'), 'w') as f: # train history
         json.dump(m1_hist, f, indent=4)
-    plot_history(m1_hist) # train history plots
+    if args.num_epochs > 1: # plots are useless for training in a single epoch
+        plot_history(m1_hist, str(m1_dir / 'm1_train_hist.png')) # train history plots
     
     # Save out M3-related stuff
     m3_dir = output_dir / 'm3'
     m3_dir.mkdir(exist_ok=True)
-    torch.save(m3.state_dict(), str(m3_dir)) # model
+    torch.save(m3.state_dict(), str(m3_dir / 'm3_state_dict.pt')) # model
     with open(str(m3_dir / 'm3_train_hist.json'), 'w') as f: # train history
         json.dump(m3_hist, f, indent=4)
-    plot_history(m3_hist) # train history plots
+    if args.num_epochs > 1: # plots are useless for training in a single epoch
+        plot_history(m3_hist, str(m3_dir / 'm3_train_hist.png')) # train history plots
     
     # Save confmats from testing
-    m1_test_loss, m1_test_acc, m1_preds, m1_labels = test_model(m1, test_ds, device, batch_size=args.batch_size, return_preds_and_labels=True)
-    m3_test_loss, m3_test_acc, m3_preds, m3_labels = test_model(m3, test_ds, device, batch_size=args.batch_size, return_preds_and_labels=True)
+    m1_test_loss, m1_test_acc, m1_preds, m1_labels = test_model(
+        m1, 
+        test_ds,
+        device, 
+        batch_size=args.batch_size,
+        return_preds_and_labels=True, 
+        p_bar_desc='Testing M1'
+    )
+    m3_test_loss, m3_test_acc, m3_preds, m3_labels = test_model(
+        m3, 
+        test_ds, 
+        device, 
+        batch_size=args.batch_size, 
+        return_preds_and_labels=True, 
+        p_bar_desc='Testing M3'
+    )
     m1_confmat, m3_confmat = confusion_matrix(m1_labels, m1_preds), confusion_matrix(m3_labels, m3_preds)
     plot_confmat(m1_confmat, save_path=str(m1_dir / 'm1_confmat.png'), title=f'Loss: {m1_test_loss:.4f}, Accuracy: {100 * m1_test_acc:.4f}%')
     plot_confmat(m3_confmat, save_path=str(m3_dir / 'm3_confmat.png'), title=f'Loss: {m3_test_loss:.4f}, Accuracy: {100 * m3_test_acc:.4f}%')
+
+
+if __name__ == '__main__':
+    main()

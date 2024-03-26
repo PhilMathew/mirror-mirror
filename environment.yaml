@@ -11,6 +11,8 @@ dependencies:
   - torchaudio
   - pytorch
   - matplotlib
-  - seaborn
   - scikit-learn
+  - pip:
+    - kaleido
+    - seaborn
 prefix: /home/phil/anaconda3/envs/unlearning
