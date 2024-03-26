@@ -11,20 +11,12 @@ from typing import *
 import pandas as pd
 from sklearn.metrics import confusion_matrix
 
-from resnet import ResNet
-from plot_utils import plot_history, plot_confmat
-from datasets import init_full_ds
+from components.resnet import ResNet, build_resnet50
+from utils.plot_utils import plot_history, plot_confmat
+from components.datasets import init_full_ds
 
 
-def build_model(num_classes: int, in_channels: int) -> ResNet:
-    model = ResNet(
-        block=Bottleneck, 
-        layers=[3, 4, 6, 3],
-        in_channels=in_channels,
-        num_classes=num_classes
-    )
-    
-    return model
+
 
 
 def train_model(
@@ -153,7 +145,7 @@ def main():
     # Deal with output path and save ther experiment arguments
     output_dir = Path(args.output_dir)
     output_dir.mkdir(exist_ok=True)
-    with open(str(output_dir / 'args.json'), 'w') as f:
+    with open(str(output_dir / 'training_args.json'), 'w') as f:
         json.dump(vars(args), f, indent=4)
     
     # Read in forget set
@@ -183,7 +175,7 @@ def main():
     
     # Initialize and train M1 (full dataset) and M3 (only the retain set)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    m1, m3 = build_model(num_classes, in_channels), build_model(num_classes, in_channels)
+    m1, m3 = build_resnet50(num_classes, in_channels), build_resnet50(num_classes, in_channels)
     print('Training M1')
     m1_hist = train_model(
         model=m1,

@@ -9,7 +9,7 @@ from plotly import express as px
 import json
 import numpy as np
 
-from datasets import init_full_ds
+from components.datasets import init_full_ds
 
 
 def main():

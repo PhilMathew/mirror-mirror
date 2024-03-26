@@ -30,3 +30,14 @@ class ResNet(torchvision.models.ResNet):
             norm_layer
         )
         self.conv1 = nn.Conv2d(in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
+
+
+def build_resnet50(num_classes: int, in_channels: int) -> ResNet:
+    model = ResNet(
+        block=Bottleneck, 
+        layers=[3, 4, 6, 3],
+        in_channels=in_channels,
+        num_classes=num_classes
+    )
+    
+    return model
