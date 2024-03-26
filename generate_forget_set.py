@@ -30,7 +30,7 @@ def main():
         json.dump(vars(args), f, indent=4)
     
     # Initialize the full dataset
-    train_ds, _ = init_full_ds(args.ds_type)
+    train_ds, _, num_classes, _ = init_full_ds(args.ds_type)
     
     # Aggregate indices and labels in forget set
     forget_set_dict = {'sample_ind': [], 'label': []}
@@ -49,7 +49,7 @@ def main():
     # Save forget set distribution
     forget_set_df['label'] = forget_set_df['label'].apply(str)
     counts = np.bincount(list(forget_set_df['label']))
-    labels = [str(i) for i in range(len(counts))]
+    labels = [str(i) for i in range(num_classes)]
     fig = px.bar(
         x=labels,
         y=counts,

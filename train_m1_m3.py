@@ -16,9 +16,6 @@ from utils.plot_utils import plot_history, plot_confmat
 from components.datasets import init_full_ds
 
 
-
-
-
 def train_model(
     model: nn.Module, 
     train_ds: Dataset, 
@@ -153,19 +150,7 @@ def main():
     forget_set_df = pd.read_csv(str(forget_set_path))
     
     # Initialize full dataset and figure out classes and channels
-    full_train_ds, test_ds = init_full_ds(args.ds_type)
-    match args.ds_type:
-        case 'MNIST':
-            num_classes = 10
-            in_channels = 1
-        case 'CIFAR10':
-            num_classes = 10
-            in_channels = 3
-        case 'CIFAR100':
-            num_classes = 100
-            in_channels = 3
-        case _:
-            raise ValueError(f'{args.ds_type} is an invalid dataset type')
+    full_train_ds, test_ds, num_classes, in_channels = init_full_ds(args.ds_type)
     
     # Create forget and retain sets
     forget_inds = list(forget_set_df['sample_ind'])
