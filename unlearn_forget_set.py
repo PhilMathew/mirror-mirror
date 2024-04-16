@@ -1,17 +1,18 @@
-from argparse import ArgumentParser
 import json
+from argparse import ArgumentParser
 from pathlib import Path
-import torch
-from torch.utils.data import Subset
 from typing import *
-import pandas as pd
-from sklearn.metrics import confusion_matrix
 
-from components.resnet import build_resnet50
-from utils.plot_utils import plot_confmat
+import pandas as pd
+import torch
+from sklearn.metrics import confusion_matrix
+from torch.utils.data import Subset
+
 from components.datasets import init_full_ds
+from components.resnet import build_resnet50
 from unlearning_frameworks.unlearning_methods import run_ssd
-from train_m1_m3 import test_model
+from utils.plot_utils import plot_confmat
+from utils.train_utils import test_model
 
 
 def main():
