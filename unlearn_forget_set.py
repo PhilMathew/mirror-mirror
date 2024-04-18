@@ -33,7 +33,7 @@ def main():
     with open(str(output_dir / 'unlearning_args.json'), 'w') as f:
         json.dump(vars(args), f, indent=4)
     
-        # Read in forget set
+    # Read in forget set
     forget_set_path = Path(args.forget_set_path)
     forget_set_df = pd.read_csv(str(forget_set_path))
     
