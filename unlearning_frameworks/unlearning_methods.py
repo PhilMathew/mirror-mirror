@@ -56,12 +56,13 @@ def run_ssd(
 
     pdr = ssd.ParameterPerturber(model, optimizer, device, parameters)
 
+    model = model.to(device)
     model = model.eval()
 
     # Calculation of the forget set importances
     forget_dl = DataLoader(forget_ds, batch_size=batch_size, num_workers=num_workers)
     sample_importances = pdr.calc_importance(forget_dl)
-
+    
     # Calculate the importances of D (see paper); this can also be done at any point before forgetting.
     full_train_dl = DataLoader(full_train_ds, batch_size=batch_size, num_workers=num_workers)
     original_importances = pdr.calc_importance(full_train_dl)

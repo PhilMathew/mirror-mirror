@@ -48,7 +48,6 @@ def main():
     m1_ckpt = Path(args.m1_checkpoint_path)
     m1 = build_resnet50(num_classes, in_channels)
     m1.load_state_dict(torch.load(str(m1_ckpt)))
-    m1 = m1.to(device)
     
     match args.unlearning_method:
         case 'ssd':
@@ -57,7 +56,7 @@ def main():
                 forget_ds=forget_ds,
                 full_train_ds=full_train_ds,
                 dampening_constant=1,
-                selection_weighting=10,
+                selection_weighting=20,
                 device=device,
                 batch_size=args.batch_size
             )

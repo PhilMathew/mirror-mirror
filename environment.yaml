@@ -1,6 +1,9 @@
 name: unlearning
 channels:
   - defaults
+  - pytorch
+  - nvidia
+  - conda-forge
 dependencies:
   - python
   - torchvision
@@ -9,9 +12,7 @@ dependencies:
   - plotly
   - tqdm
   - torchaudio
-  - pytorch
   - matplotlib
   - seaborn
   - scikit-learn
   - wandb
-prefix: /home/phil/anaconda3/envs/unlearning
