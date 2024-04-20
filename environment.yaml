@@ -1,18 +1,23 @@
 name: unlearning
 channels:
-  - defaults
+  - conda-forge
   - pytorch
   - nvidia
-  - conda-forge
+  - defaults
 dependencies:
-  - python
-  - torchvision
-  - pandas
-  - pytorch-cuda=12.1
-  - plotly
-  - tqdm
-  - torchaudio
-  - matplotlib
-  - seaborn
   - scikit-learn
+  - pandas
+  - torchaudio
+  - plotly
+  - matplotlib
   - wandb
+  - tqdm
+  - torchvision
+  - python
+  - pip
+  - pytorch-cuda=12.1
+  - pytorch
+  - pip:
+    - kaleido==0.2.1
+    - seaborn==0.13.2
+prefix: /fast/mathepa1/anaconda3/envs/unlearning
