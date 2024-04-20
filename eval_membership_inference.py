@@ -5,40 +5,11 @@ from typing import *
 
 import pandas as pd
 import torch
-from torch import nn
-from sklearn.metrics import confusion_matrix, roc_auc_score
-from torch.utils.data import Subset, Dataset
+from torch.utils.data import Subset
 
 from components.datasets import init_full_ds
 from components.resnet import build_resnet50
-from membership_inference.lira import get_lira_results
-from utils.plot_utils import plot_confmat
-from utils.train_utils import test_model
-        
-
-def run_mia_on_model(
-    model: nn.Module,
-    mia_fn: Callable,
-    member_ds: Dataset,
-    non_member_ds: Dataset,
-    data_distro_ds: Dataset, 
-    device: torch.device,
-    **kwargs
-):
-    model = model.to(device)
-    all_scores_df = mia_fn(
-        model=model,
-        member_ds=member_ds,
-        non_member_ds=non_member_ds,
-        data_distro_ds=data_distro_ds,
-        device=device,
-        **kwargs
-    )
-    
-    mia_auc = roc_auc_score(all_scores_df['member_label'], all_scores_df['mi_score'])
-    
-    return mia_auc
-
+from membership_inference.logreg_mia import run_logreg_mia
 
 
 def main():
@@ -67,14 +38,11 @@ def main():
     forget_set_path = Path(args.forget_set_path)
     forget_set_df = pd.read_csv(str(forget_set_path))
     
-    # Create forget set
+    # Create forget and retain sets
     forget_inds = list(forget_set_df['sample_ind'])
     forget_ds = Subset(full_train_ds, indices=forget_inds)
-    
-    # Create the member and non-member datasets
-    non_member_ds = forget_ds + test_ds
     retain_inds = [i for i in range(len(full_train_ds)) if i not in forget_inds]
-    member_ds = Subset(full_train_ds, indices=retain_inds) # don't need to worry about the test dataset since it contains no members obviously
+    retain_ds = Subset(full_train_ds, indices=retain_inds) # don't need to worry about the test dataset since it contains no members obviously
     
     # Load M2, M3
     m2_ckpt, m3_ckpt = Path(args.m2_checkpoint_path), Path(args.m3_checkpoint_path)
@@ -83,42 +51,40 @@ def main():
     m3.load_state_dict(torch.load(str(m3_ckpt)))
     
     match args.membership_inference_attack_type:
-        case 'lira':
-            get_mia_score = lambda m: run_mia_on_model(
-                model=m,
-                mia_fn=get_lira_results,
-                member_ds=member_ds,
-                non_member_ds=non_member_ds,
-                data_distro_ds=(full_train_ds + test_ds),
-                device=device,
-                num_shadow_models=128,
+        case 'logreg':
+            get_mia_score = lambda model: run_logreg_mia(
+                model=model,
+                model_forget_ds=forget_ds,
+                model_retain_ds=retain_ds,
+                model_test_ds=test_ds,
                 batch_size=args.batch_size,
-                num_epochs=2,
-                num_classes=num_classes,
-                in_channels=in_channels
+                device=device
             )
         case _:
             raise ValueError(f'"{args.membership_inference_attack_type}" is an unknown type of membership inference attack')
     
     print('Getting MIA score for M2')
-    m2_mia_score = get_mia_score(m2)
+    m2_mia_score, m2_num_pred_members = get_mia_score(m2)
     
     print('Getting MIA score for M3')
-    m3_mia_score = get_mia_score(m3)
+    m3_mia_score, m3_num_pred_members = get_mia_score(m3)
     
     results_dict = {
+        'num_actual_members': 0, # running on the forget set os obviously this is 0
         'm2': {
             'ckpt': args.m2_checkpoint_path,
+            'num_pred_members': m2_num_pred_members,
             f'{args.membership_inference_attack_type}_score': m2_mia_score
         },
         'm3': {
             'ckpt': args.m3_checkpoint_path,
+            'num_pred_members': m3_num_pred_members,
             f'{args.membership_inference_attack_type}_score': m3_mia_score
         },
         'outcome': 'M2' if m2_mia_score > m3_mia_score else 'M3'
     }
     
-    with open(str(output_dir / f'{args.membership_inference_attack_type}_results.json'), 'w') as f:
+    with open(str(output_dir / f'{args.membership_inference_attack_type}_mia_results.json'), 'w') as f:
         json.dump(results_dict, f, indent=4)
 
 
