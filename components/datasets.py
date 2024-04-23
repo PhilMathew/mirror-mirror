@@ -32,25 +32,47 @@ def init_full_ds(ds_type: str) -> Tuple[Dataset, Dataset, int, int]:
                     transforms.Normalize(0.5, 0.5)
                 ]
             )
-            train_ds, test_ds = MNIST('./data', transform=transform, download=True), MNIST('./data', train=False, transform=transform, download=True)
+            
+            train_ds = MNIST('./data', transform=transform, download=True) 
+            test_ds = MNIST('./data', train=False, transform=transform, download=True)
             num_classes, in_channels = 10, 1
         case 'CIFAR10':
-            transform = transforms.Compose(
+            train_transform = transforms.Compose(
                 [
                     transforms.ToTensor(), 
-                    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+                    transforms.RandomResizedCrop(size=(64, 64), antialias=True),
+                    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
                 ]
             )
-            train_ds, test_ds = CIFAR10('./data', transform=transform, download=True), CIFAR10('./data', train=False, transform=transform, download=True)
+            
+            test_transform = transforms.Compose(
+                [
+                    transforms.ToTensor(),
+                    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+                ]
+            )
+            
+            train_ds = CIFAR10('./data', transform=train_transform, download=True)
+            test_ds = CIFAR10('./data', train=False, transform=test_transform, download=True)
             num_classes, in_channels = 10, 3
         case 'CIFAR100':
-            transform = transforms.Compose(
+            train_transform = transforms.Compose(
+                [
+                    transforms.ToTensor(), 
+                    transforms.RandomResizedCrop(size=(64, 64), antialias=True),
+                    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+                ]
+            )
+            
+            test_transform = transforms.Compose(
                 [
                     transforms.ToTensor(), 
                     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
                 ]
             )
-            train_ds, test_ds = CIFAR100('./data', transform=transform, download=True), CIFAR100('./data', train=False, transform=transform, download=True)
+            
+            train_ds = CIFAR100('./data', transform=train_transform, download=True)
+            test_ds = CIFAR100('./data', train=False, transform=test_transform, download=True)
             num_classes, in_channels = 100, 3
         case _:
             raise ValueError(f'{ds_type} is an invalid dataset type') 

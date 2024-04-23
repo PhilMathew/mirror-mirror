@@ -56,7 +56,7 @@ def main():
                 forget_ds=forget_ds,
                 full_train_ds=full_train_ds,
                 dampening_constant=1,
-                selection_weighting=20,
+                selection_weighting=10,
                 device=device,
                 batch_size=args.batch_size
             )
