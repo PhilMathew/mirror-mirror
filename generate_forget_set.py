@@ -49,8 +49,8 @@ def main():
     
     # Save forget set distribution
     forget_set_df['label'] = forget_set_df['label'].apply(str)
-    counts = np.bincount(list(forget_set_df['label']))
     labels = [str(i) for i in range(num_classes)]
+    counts = np.bincount(list(forget_set_df['label']), minlength=len(labels))
     fig = px.bar(
         x=labels,
         y=counts,
