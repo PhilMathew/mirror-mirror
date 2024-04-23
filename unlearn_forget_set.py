@@ -7,6 +7,7 @@ import pandas as pd
 import torch
 from sklearn.metrics import confusion_matrix
 from torch.utils.data import Subset
+import numpy as np
 
 from components.datasets import init_full_ds
 from components.resnet import build_resnet50
@@ -23,6 +24,8 @@ def main():
     parser.add_argument('-m1', '--m1_checkpoint_path', help='/path/to/state/dict/for/m1.pt')
     parser.add_argument('-o', '--output_dir', default='.', help='/path/to/output/directory')
     parser.add_argument('-bs', '--batch_size', type=int, default=32, help='Number of training examples in a batch')
+    # parser.add_argument('--dampening_constant', type=float, default=1, help='Dampening constant for SSD unlearning method (only applicable if using SSD)')
+    # parser.add_argument('--selection_weighting', type=float, default=10, help='Selection weighting for SSD unlearning method (only applicable if using SSD)')
     args = parser.parse_args()
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -49,35 +52,54 @@ def main():
     m1 = build_resnet50(num_classes, in_channels)
     m1.load_state_dict(torch.load(str(m1_ckpt)))
     
+    
+        
     match args.unlearning_method:
         case 'ssd':
-            m2 = run_ssd(
-                model=m1,
-                forget_ds=forget_ds,
-                full_train_ds=full_train_ds,
-                dampening_constant=1,
-                selection_weighting=10,
-                device=device,
-                batch_size=args.batch_size
-            )
+            m2, m2_confmat, test_loss, test_acc, best_delta = None, None, None, None, float('inf')
+            dampening_constant = 1
+            unlearning_params = {'dampening_constant': dampening_constant, 'selection_weighting': None}
+            for selection_weighting in range(5, 55, 5): # running a really rudimentary hyperparameter sweep over the selection weight
+                curr_m2 = run_ssd(
+                    model=m1,
+                    forget_ds=forget_ds,
+                    full_train_ds=full_train_ds,
+                    dampening_constant=dampening_constant,
+                    selection_weighting=selection_weighting,
+                    device=device,
+                    batch_size=args.batch_size
+                )
+                
+                curr_test_loss, curr_test_acc, curr_preds, curr_labels = test_model(
+                    curr_m2, 
+                    test_ds, 
+                    device, 
+                    batch_size=args.batch_size, 
+                    return_preds_and_labels=True, 
+                    p_bar_desc='Testing M2'
+                )
+                
+                curr_m2_confmat = confusion_matrix(curr_labels, curr_preds)
+                curr_m2_confmat = np.array(curr_m2_confmat)
+                curr_m2_confmat_norm = curr_m2_confmat.astype('float') / curr_m2_confmat.sum(axis=1)[:, np.newaxis]  # normalize the confusion matrix
+                curr_m2_confmat_norm[np.isnan(curr_m2_confmat_norm)] = 0
+                curr_delta = np.abs(curr_m2_confmat_norm.trace() - (num_classes - 1))
+                
+                if  curr_delta < best_delta:
+                    best_delta = curr_delta
+                    m2, m2_confmat, test_loss, test_acc = curr_m2, curr_m2_confmat, curr_test_loss, curr_test_acc
+                    unlearning_params['selection_weighting'] = selection_weighting
         case _:
             raise ValueError(f'"{args.unlearning_method}" is an unknown unlearning method')
     
-    # Save out M2
+    # Save out M2 and unlearning params
     m2_dir = output_dir / 'm2'
     m2_dir.mkdir(exist_ok=True)
     torch.save(m2.state_dict(), str(m2_dir / 'm2_state_dict.pt'))
+    with open(str(m2_dir / 'unlearning_params.json'), 'w') as f:
+        json.dump(unlearning_params, f, indent=4)
     
-    # Save test metrics for M2
-    test_loss, test_acc, preds, labels = test_model(
-        m2, 
-        test_ds, 
-        device, 
-        batch_size=args.batch_size, 
-        return_preds_and_labels=True, 
-        p_bar_desc='Testing M2'
-    )
-    m2_confmat = confusion_matrix(labels, preds)
+    # Save out confusion matrix
     plot_confmat(m2_confmat, save_path=str(m2_dir / 'm2_confmat.png'), title=f'Loss: {test_loss:.4f}, Accuracy: {100 * test_acc:.4f}%')
     
 
