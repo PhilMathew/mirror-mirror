@@ -1,6 +1,4 @@
-
-
-
+mkdir output/test_cifar10
 python generate_forget_set.py -d CIFAR10 -c 9 -n 7000 -o output/test_cifar10  
 python train_m1_m3.py -d CIFAR10 -f output/test_cifar10/datasets/forget_set.csv -o output/test_cifar10 -ne 200 -bs 128 -lr 0.1
 python unlearn_forget_set.py -d CIFAR10 -u ssd -f output/test_cifar10/datasets/forget_set.csv -m1 output/test_cifar10/m1/m1_state_dict.pt -o output/test_cifar10 -bs 64

@@ -15,6 +15,11 @@ from sklearn.linear_model import LogisticRegression
 from components.datasets import MembershipInferenceDataset
 
 
+# From https://github.com/if-loops/selective-synaptic-dampening.git
+def entropy(p, dim=-1, keepdim=False):
+    return -torch.where(p > 0, p * p.log(), p.new([0.0])).sum(dim=dim, keepdim=keepdim)
+
+
 def train_mia_logreg(
     model: nn.Module,
     member_train_ds: Dataset,
@@ -34,9 +39,10 @@ def train_mia_logreg(
             x, _, member_label = batch
             x = x.to(device)
             pred = F.softmax(model(x), dim=-1).cpu()
+            pred = entropy(pred, dim=-1)
             model_preds.append(pred)
             member_labels.append(member_label)
-    model_preds = torch.cat(model_preds, dim=0).numpy()
+    model_preds = torch.cat(model_preds, dim=0).numpy().reshape(-1, 1)
     member_labels = torch.cat(member_labels, dim=0).numpy()
     
     clf = LogisticRegression(class_weight="balanced", solver="lbfgs", multi_class="multinomial")
@@ -70,11 +76,13 @@ def run_logreg_mia(
             x, _ = batch
             x = x.to(device)
             pred = F.softmax(model(x), dim=-1).cpu()
+            pred = entropy(pred, dim=-1)
             model_preds.append(pred)
-    model_preds = torch.cat(model_preds, dim=0).numpy()
+    model_preds = torch.cat(model_preds, dim=0).numpy().reshape(-1, 1)
     member_labels = np.zeros(model_preds.shape[0])
     
     mia_preds = clf.predict(model_preds)
     mia_acc = np.mean(mia_preds == member_labels)
+    mia_score = np.mean(mia_preds)
     
-    return mia_acc, int(np.sum(mia_preds == 1))
+    return mia_score, int(np.sum(mia_preds == 1))
