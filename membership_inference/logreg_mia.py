@@ -27,7 +27,22 @@ def train_mia_logreg(
     batch_size: int,
     device: torch.device
 ) -> LogisticRegression:
-    
+    """
+    Creates a logistic regression model to do membership inference
+
+    :param model: Model to use for infer membership on
+    :type model: nn.Module
+    :param member_train_ds: Dataset of members to train the attack with
+    :type member_train_ds: Dataset
+    :param non_member_train_ds: Dataset of non members to train the attack with
+    :type non_member_train_ds: Dataset
+    :param batch_size: Number of samples in each batch
+    :type batch_size: int
+    :param device: Device to run the model on
+    :type device: torch.device
+    :return: Trained classifier that can be used for membership inference
+    :rtype: LogisticRegression
+    """
     mia_train_ds = MembershipInferenceDataset(member_train_ds, non_member_train_ds)
     mia_train_dl = DataLoader(mia_train_ds, batch_size=batch_size)
     model = model.to(device)
@@ -58,7 +73,25 @@ def run_logreg_mia(
     model_test_ds: Dataset,
     batch_size: int,
     device: torch.device
-):
+) -> Tuple[float, int]:
+    """
+    Runs a membership inference attack using a logistic regression model
+
+    :param model: Model to infer membership on
+    :type model: nn.Module
+    :param model_forget_ds: Forget set
+    :type model_forget_ds: Dataset
+    :param model_retain_ds: Retain set (used to train the attack)
+    :type model_retain_ds: Dataset
+    :param model_test_ds: Test set (used to train the attack)
+    :type model_test_ds: Dataset
+    :param batch_size: Number of samples in each batch
+    :type batch_size: int
+    :param device: Device to run the model on
+    :type device: torch.device
+    :return: Tuple of the membership inference score and the number of predicted members in the forget set
+    :rtype: Tuple[float, int]
+    """
     clf = train_mia_logreg(
         model=model,
         member_train_ds=model_retain_ds,
