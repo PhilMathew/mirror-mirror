@@ -79,10 +79,8 @@ def run_logreg_mia(
             pred = entropy(pred, dim=-1)
             model_preds.append(pred)
     model_preds = torch.cat(model_preds, dim=0).numpy().reshape(-1, 1)
-    member_labels = np.zeros(model_preds.shape[0])
     
     mia_preds = clf.predict(model_preds)
-    mia_acc = np.mean(mia_preds == member_labels)
     mia_score = np.mean(mia_preds)
     
     return mia_score, int(np.sum(mia_preds == 1))
