@@ -63,6 +63,7 @@ def main():
         title='Forget Set Label Distribution'
     )
     fig.write_image(str(output_dir / 'forget_set_distribution.png'), format='png')
+    fig.write_html(str(output_dir / 'forget_set_distribution.html'))
 
 
 if __name__ == '__main__':

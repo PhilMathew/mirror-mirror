@@ -5,6 +5,14 @@ import seaborn as sns
 
 
 def plot_history(train_hist: Dict[str, Sequence[float]], save_path='train_hist.png'):
+    """
+    Plots the training history of a model.
+
+    :param train_hist: Dictionary of training history
+    :type train_hist: Dict[str, Sequence[float]]
+    :param save_path: Path to save the plot, defaults to 'train_hist.png'
+    :type save_path: str, optional
+    """
     plot_val = 'val_loss' in train_hist.keys()
     
     if plot_val:
@@ -27,7 +35,19 @@ def plot_history(train_hist: Dict[str, Sequence[float]], save_path='train_hist.p
     fig.savefig(str(save_path))
 
 
-def plot_confmat(cm, save_path='confmat.png', title='', label_mapping: dict = None):
+def plot_confmat(cm: Union[List, np.ndarray], save_path='confmat.png', title='', label_mapping: dict = None):
+    """
+    Plots a given confusion matrix
+
+    :param cm: Confusion matrix to plot
+    :type cm: Union[List, np.ndarray]
+    :param save_path: Path to save the plot, defaults to 'confmat.png'
+    :type save_path: str, optional
+    :param title: Plot title, defaults to ''
+    :type title: str, optional
+    :param label_mapping: Dictionary mapping labels to their names, e.g. {0: 'cat', 1: 'dog'}, defaults to None
+    :type label_mapping: dict, optional
+    """
     fig, ax = plt.subplots(1, 1, figsize=(15, 10))
     
     cm = np.array(cm)

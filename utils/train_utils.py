@@ -17,6 +17,28 @@ def train_model(
     lr: int = 1e-3,
     num_workers: int = 16
 ) -> Dict[str, List[float]]:
+    """
+    Trains a PyTorch model on a given dataset.
+
+    :param model: Model to train
+    :type model: nn.Module
+    :param train_ds: Training dataset
+    :type train_ds: Dataset
+    :param device: Device to train on
+    :type device: torch.device
+    :param val_ds: Validation dataset, defaults to None
+    :type val_ds: Optional[Dataset], optional
+    :param batch_size: Number of examples in each batch, defaults to 32
+    :type batch_size: int, optional
+    :param num_epochs: Number of training epochs, defaults to 10
+    :type num_epochs: int, optional
+    :param lr: Initial learning rate, defaults to 1e-3
+    :type lr: int, optional
+    :param num_workers: Number of workers for dataloader, defaults to 16
+    :type num_workers: int, optional
+    :return: Dictionary of training history, including training and validation loss and accuracy
+    :rtype: Dict[str, List[float]]
+    """
     # Model-related things
     model = model.to(device)
     model.train()
@@ -85,6 +107,26 @@ def test_model(
     p_bar_desc: str = 'Testing Model',
     return_preds_and_labels : bool = False
 ) -> Union[Tuple[float, float, torch.Tensor, torch.Tensor], Tuple[float, float]]:
+    """
+    Tests a PyTorch model on a given dataset.
+
+    :param model: Model to test
+    :type model: nn.Module
+    :param test_ds: Test dataset
+    :type test_ds: Dataset
+    :param device: Device to test on
+    :type device: torch.device
+    :param batch_size: Number of examples in each batch, defaults to 32
+    :type batch_size: int, optional
+    :param num_workers: Number of workers for dataloader, defaults to 16
+    :type num_workers: int, optional
+    :param p_bar_desc: Progress bar description for logging, defaults to 'Testing Model'
+    :type p_bar_desc: str, optional
+    :param return_preds_and_labels: Whether to return predictions and labels, defaults to False
+    :type return_preds_and_labels: bool, optional
+    :return: Either loss and accuracy, or loss, accuracy, predictions, and labels if return_preds_and_labels is True
+    :rtype: Union[Tuple[float, float, torch.Tensor, torch.Tensor], Tuple[float, float]]
+    """
     model = model.to(device)
     model.eval()
     loss_fn = nn.CrossEntropyLoss()

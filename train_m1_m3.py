@@ -39,7 +39,7 @@ def main():
     forget_set_df = pd.read_csv(str(forget_set_path))
     
     # Initialize full dataset and figure out classes and channels
-    full_train_ds, test_ds, num_classes, in_channels = init_full_ds(args.ds_type)
+    full_train_ds, test_ds, num_classes, in_channels = init_full_ds(args.ds_type, use_random_train_aug=True)
     
     # Create forget and retain sets
     forget_inds = list(forget_set_df['sample_ind'])
