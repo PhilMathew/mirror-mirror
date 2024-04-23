@@ -4,9 +4,8 @@ from typing import *
 from torch.utils.data import Dataset
 
 
-# Improves model performance (https://github.com/weiaicunzai/pytorch-cifar100)
-CIFAR_MEAN = (0.5070751592371323, 0.48654887331495095, 0.4409178433670343)
-CIFAR_STD = (0.2673342858792401, 0.2564384629170883, 0.27615047132568404)
+# Improves model performance (https://github.com/kuangliu/pytorch-cifar/blob/master/main.py)
+CIFAR_MEAN, CIFAR_STD = (0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)
 
 
 class MembershipInferenceDataset(Dataset):
@@ -66,7 +65,6 @@ def init_full_ds(ds_type: str, use_random_train_aug: bool = False) -> Tuple[Data
                     [
                         transforms.RandomCrop(32, padding=4),
                         transforms.RandomHorizontalFlip(),
-                        transforms.RandomRotation(15),
                         transforms.ToTensor(),
                         transforms.Normalize(CIFAR_MEAN, CIFAR_STD),
                     ]
@@ -95,7 +93,6 @@ def init_full_ds(ds_type: str, use_random_train_aug: bool = False) -> Tuple[Data
                     [
                         transforms.RandomCrop(32, padding=4),
                         transforms.RandomHorizontalFlip(),
-                        transforms.RandomRotation(15),
                         transforms.ToTensor(),
                         transforms.Normalize(CIFAR_MEAN, CIFAR_STD),
                     ]

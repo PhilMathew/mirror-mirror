@@ -7,6 +7,26 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
 
+# From https://github.com/if-loops/selective-synaptic-dampening.git
+class WarmUpLR(torch.optim.lr_scheduler._LRScheduler):
+    def __init__(self, optimizer, total_iters, last_epoch=-1):
+        """
+        Warmup training learning rate scheduler
+    
+        :param optimizer: optimizer (e.g. SGD)
+        :param total_iters: Number of iterations of warmup phase
+        """
+        self.total_iters = total_iters
+        super().__init__(optimizer, last_epoch)
+
+    def get_lr(self):
+        # We will use the first m batches, and set the learning rate to base_lr * m / total_iters
+        return [
+            base_lr * self.last_epoch / (self.total_iters + 1e-8)
+            for base_lr in self.base_lrs
+        ]
+
+
 def train_model(
     model: nn.Module, 
     train_ds: Dataset, 
@@ -15,7 +35,8 @@ def train_model(
     batch_size: int = 32, 
     num_epochs: int = 10,
     lr: int = 1e-3,
-    num_workers: int = 16
+    num_workers: int = 16,
+    warmup_epochs: int = 1,
 ) -> Dict[str, List[float]]:
     """
     Trains a PyTorch model on a given dataset.
@@ -36,23 +57,30 @@ def train_model(
     :type lr: int, optional
     :param num_workers: Number of workers for dataloader, defaults to 16
     :type num_workers: int, optional
+    :param warmup_epochs: Number of warmup epochs, defaults to 1
+    :type warmup_epochs: int, optional
     :return: Dictionary of training history, including training and validation loss and accuracy
     :rtype: Dict[str, List[float]]
     """
     # Model-related things
     model = model.to(device)
     model.train()
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    loss_fn = nn.CrossEntropyLoss()
     
     # Data-related stuff
     train_dl = DataLoader(train_ds, batch_size=batch_size, num_workers=num_workers)
     
+    # Optimizer, loss function, and LR scheduler
+    optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=5e-4)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=200)
+    loss_fn = nn.CrossEntropyLoss()
+    
+    
     history = {k: [] for k in ('train_loss', 'train_acc', 'val_loss', 'val_acc')}
-    for epoch in range(num_epochs):
-        p_bar = tqdm(train_dl, desc=f'Epoch {epoch + 1}')
+    for epoch in range(1, num_epochs + 1):
+        p_bar = tqdm(train_dl, desc=f'Epoch {epoch}')
         train_loss, train_acc = 0, 0
         model.train() # in case an eval loop set it to evaluation
+        
         for i, batch in enumerate(p_bar):
             optimizer.zero_grad()
             
@@ -76,6 +104,7 @@ def train_model(
                 f'Train Loss: {train_loss / (i + 1):.4f}, Train Accuracy: {100 * train_acc / (i + 1):.4f}%'
             )
             p_bar.update()
+            
         history['train_loss'].append(train_loss / (len(train_dl)))
         history['train_acc'].append(train_acc / (len(train_dl)))
         
@@ -91,6 +120,8 @@ def train_model(
             print(f'Validation Loss: {val_loss:.4f}, Validation Accuracy: {100 * val_acc:.4f}%')
             history['val_loss'].append(val_loss)
             history['val_acc'].append(val_acc)
+        
+        scheduler.step() # update learning rate
     
     # Remove empty keys from history
     history = {k: v for k, v in history.items() if len(v) > 0}

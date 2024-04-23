@@ -73,3 +73,24 @@ def build_resnet50(num_classes: int, in_channels: int) -> ResNet:
     )
     
     return model
+
+
+def build_resnet50(num_classes: int, in_channels: int) -> ResNet:
+    """
+    Build ResNet18 model
+
+    :param num_classes: Number of output classes
+    :type num_classes: int
+    :param in_channels: Number of channels in input data
+    :type in_channels: int
+    :return: ResNet18 model
+    :rtype: ResNet
+    """
+    model = ResNet(
+        block=BasicBlock, 
+        layers=[2, 2, 2, 2],
+        in_channels=in_channels,
+        num_classes=num_classes
+    )
+    
+    return model
