@@ -1,5 +1,5 @@
 # Machine Unlearning is Computational Indistinguishability
-Authors: Philip Mathew, Brennon Brimhall, Neil Fendley
+Authors: Philip Mathew, Brennon Brimhall, Neil Fendley, Dr. Yinzhi Cao, Dr. Matthew D. Green
 
 ## Installation
 After cloning, there are two major things that should be done.
