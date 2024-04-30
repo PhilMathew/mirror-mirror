@@ -28,7 +28,7 @@ def main():
     # Deal with output path and save ther experiment arguments
     output_dir = Path(args.output_dir)
     output_dir.mkdir(exist_ok=True)
-    with open(str(output_dir / 'mia_args.json'), 'w') as f:
+    with open(str(output_dir / f'{args.membership_inference_attack_type}_mia_args.json'), 'w') as f:
         json.dump(vars(args), f, indent=4)
     
     # Initialize full dataset and figure out classes and channels
@@ -70,22 +70,14 @@ def main():
     control_mia_score, control_num_pred_members = get_mia_score(control_model)
     
     results_dict = {
-        'num_actual_members': 0, # running on the forget set so obviously this is 0
-        'unlearn': {
-            'ckpt': args.unlearn_checkpoint_path,
-            'num_pred_members': unlearn_num_pred_members,
-            f'{args.membership_inference_attack_type}_score': unlearn_mia_score
-        },
-        'control': {
-            'ckpt': args.control_checkpoint_path,
-            'num_pred_members': control_num_pred_members,
-            f'{args.membership_inference_attack_type}_score': control_mia_score
-        },
+        'unlearn_num_pred_members': unlearn_num_pred_members,
+        'unlearn_score': unlearn_mia_score,
+        'control_num_pred_members': control_num_pred_members,
+        'control_score': control_mia_score,
         'outcome': 'unlearn' if unlearn_mia_score < control_mia_score else 'control'
     }
-    
-    with open(str(output_dir / f'{args.membership_inference_attack_type}_mia_results.json'), 'w') as f:
-        json.dump(results_dict, f, indent=4)
+    results_df = pd.DataFrame({k: v if isinstance(v, list) else [v] for k, v in results_dict.items()})
+    results_df.to_csv(str(output_dir / f'{args.membership_inference_attack_type}_mia_results.csv'), index=False)
 
 
 if __name__ == '__main__':
