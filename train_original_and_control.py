@@ -79,7 +79,7 @@ def main():
         plot_history(original_train_hist, str(original_model_dir / 'original_train_hist.png')) # train history plots
     
     # Save out M3-related stuff
-    control_model_dir = output_dir / 'm3'
+    control_model_dir = output_dir / 'control'
     control_model_dir.mkdir(exist_ok=True)
     torch.save(control_model.state_dict(), str(control_model_dir / 'control_state_dict.pt')) # model
     with open(str(control_model_dir / 'control_train_hist.json'), 'w') as f: # train history

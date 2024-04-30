@@ -24,7 +24,7 @@ do
         -d MNIST \
         -mia logreg \
         -f ${res_dir}/datasets/forget_set.csv \
-        -u ${res_dir}/unlearned/unlearned_state_dict.pt \
+        -u ${res_dir}/unlearn/unlearn_state_dict.pt \
         -c ${res_dir}/control/control_state_dict.pt \
         -o $res_dir \
         -bs 64
