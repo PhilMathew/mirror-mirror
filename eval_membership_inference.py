@@ -17,8 +17,8 @@ def main():
     parser.add_argument('-d', '--ds_type', help='Dataset to use for training (one of MNIST, CIFAR10, or CIFAR100)')
     parser.add_argument('-mia', '--membership_inference_attack_type', help='Type of MIA to run') # TODO: Make README with options
     parser.add_argument('-f', '--forget_set_path', help='/path/to/file/defining/forget_set.csv')
-    parser.add_argument('-m2', '--m2_checkpoint_path', help='/path/to/state/dict/for/m2.pt')
-    parser.add_argument('-m3', '--m3_checkpoint_path', help='/path/to/state/dict/for/m3.pt')
+    parser.add_argument('-u', '--unlearn_checkpoint_path', help='/path/to/state/dict/for/unlearned/model.pt')
+    parser.add_argument('-c', '--control_checkpoint_path', help='/path/to/state/dict/for/control/model.pt')
     parser.add_argument('-o', '--output_dir', default='.', help='/path/to/output/directory')
     parser.add_argument('-bs', '--batch_size', type=int, default=32, help='Number of training examples in a batch')
     args = parser.parse_args()
@@ -45,10 +45,10 @@ def main():
     retain_ds = Subset(full_train_ds, indices=retain_inds) # don't need to worry about the test dataset since it contains no members obviously
     
     # Load M2, M3
-    m2_ckpt, m3_ckpt = Path(args.m2_checkpoint_path), Path(args.m3_checkpoint_path)
-    m2, m3 = build_resnet50(num_classes, in_channels), build_resnet50(num_classes, in_channels)
-    m2.load_state_dict(torch.load(str(m2_ckpt)))
-    m3.load_state_dict(torch.load(str(m3_ckpt)))
+    unlearn_ckpt, control_ckpt = Path(args.unlearn_checkpoint_path), Path(args.control_checkpoint_path)
+    unlearned_model, control_model = build_resnet50(num_classes, in_channels), build_resnet50(num_classes, in_channels)
+    unlearned_model.load_state_dict(torch.load(str(unlearn_ckpt)))
+    control_model.load_state_dict(torch.load(str(control_ckpt)))
     
     match args.membership_inference_attack_type:
         case 'logreg':
@@ -63,25 +63,25 @@ def main():
         case _:
             raise ValueError(f'"{args.membership_inference_attack_type}" is an unknown type of membership inference attack')
     
-    print('Getting MIA score for M2')
-    m2_mia_score, m2_num_pred_members = get_mia_score(m2)
+    print('Getting MIA score for unlearned model')
+    unlearn_mia_score, unlearn_num_pred_members = get_mia_score(unlearned_model)
     
-    print('Getting MIA score for M3')
-    m3_mia_score, m3_num_pred_members = get_mia_score(m3)
+    print('Getting MIA score for control model')
+    control_mia_score, control_num_pred_members = get_mia_score(control_model)
     
     results_dict = {
-        'num_actual_members': 0, # running on the forget set os obviously this is 0
-        'm2': {
-            'ckpt': args.m2_checkpoint_path,
-            'num_pred_members': m2_num_pred_members,
-            f'{args.membership_inference_attack_type}_score': m2_mia_score
+        'num_actual_members': 0, # running on the forget set so obviously this is 0
+        'unlearn': {
+            'ckpt': args.unlearn_checkpoint_path,
+            'num_pred_members': unlearn_num_pred_members,
+            f'{args.membership_inference_attack_type}_score': unlearn_mia_score
         },
-        'm3': {
-            'ckpt': args.m3_checkpoint_path,
-            'num_pred_members': m3_num_pred_members,
-            f'{args.membership_inference_attack_type}_score': m3_mia_score
+        'control': {
+            'ckpt': args.control_checkpoint_path,
+            'num_pred_members': control_num_pred_members,
+            f'{args.membership_inference_attack_type}_score': control_mia_score
         },
-        'outcome': 'M2' if m2_mia_score > m3_mia_score else 'M3'
+        'outcome': 'unlearn' if unlearn_mia_score < control_mia_score else 'control'
     }
     
     with open(str(output_dir / f'{args.membership_inference_attack_type}_mia_results.json'), 'w') as f:

@@ -8,14 +8,14 @@ do
     python generate_forget_set.py -d MNIST -c $class -n 7000 -o $res_dir
 
     # Train M1 and M3
-    python train_m1_m3.py -d MNIST -f ${res_dir}/datasets/forget_set.csv -o $res_dir -ne 3 -bs 128
+    python train_original_and_control.py -d MNIST -f ${res_dir}/datasets/forget_set.csv -o $res_dir -ne 3 -bs 128
 
     # Obtain M2 by running unlearning on M1
     python unlearn_forget_set.py \
         -d MNIST \
         -u ssd \
         -f ${res_dir}/datasets/forget_set.csv \
-        -m1 ${res_dir}/m1/m1_state_dict.pt \
+        -ckpt ${res_dir}/original/original_state_dict.pt \
         -o $res_dir \
         -bs 64 
     
@@ -24,8 +24,8 @@ do
         -d MNIST \
         -mia logreg \
         -f ${res_dir}/datasets/forget_set.csv \
-        -m2 ${res_dir}/m2/m2_state_dict.pt \
-        -m3 ${res_dir}/m3/m3_state_dict.pt \
+        -u ${res_dir}/unlearned/unlearned_state_dict.pt \
+        -c ${res_dir}/control/control_state_dict.pt \
         -o $res_dir \
         -bs 64
 done

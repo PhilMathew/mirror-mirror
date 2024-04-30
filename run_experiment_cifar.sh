@@ -8,14 +8,14 @@ do
     python generate_forget_set.py -d CIFAR10 -c $class -n 7000 -o $res_dir
 
     # Train M1 and M3
-    python train_m1_m3.py -d CIFAR10 -f ${res_dir}/datasets/forget_set.csv -o $res_dir -ne 200 -bs 128 -lr 0.1
+    python train_original_and_control.py -d CIFAR10 -f ${res_dir}/datasets/forget_set.csv -o $res_dir -ne 200 -bs 128 -lr 0.1
 
     # Obtain M2 by running unlearning on M1
     python unlearn_forget_set.py \
         -d CIFAR10 \
         -u ssd \
         -f ${res_dir}/datasets/forget_set.csv \
-        -m1 ${res_dir}/m1/m1_state_dict.pt \
+        -ckpt ${res_dir}/original/original_state_dict.pt \
         -o $res_dir \
         -bs 64 
 
@@ -24,8 +24,8 @@ do
         -d CIFAR10 \
         -mia logreg \
         -f ${res_dir}/datasets/forget_set.csv \
-        -m2 ${res_dir}/m2/m2_state_dict.pt \
-        -m3 ${res_dir}/m3/m3_state_dict.pt \
+        -u ${res_dir}/unlearn/unlearn_state_dict.pt \
+        -c ${res_dir}/control/control_state_dict.pt \
         -o $res_dir \
         -bs 64
 done
