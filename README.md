@@ -9,6 +9,8 @@ After cloning, there are two major things that should be done.
 cd unlearning_frameworks/
 git submodule init
 git submodule update --remote --merge
+git clone https://github.com/if-loops/selective-synaptic-dampening.git
+mv selective-synaptic-dampening selective_synaptic_dampening
 ```
 
 2) Install the conda environment
