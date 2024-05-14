@@ -9,7 +9,7 @@ from torch.utils.data import Subset
 
 from components.datasets import init_full_ds
 from components.resnet import build_resnet50
-from membership_inference.logreg_mia import run_logreg_mia
+from distinguishers.logreg_mia import run_logreg_mia
 
 
 def main():
