@@ -48,7 +48,14 @@ def main():
     retain_ds = Subset(full_train_ds, indices=retain_inds)
     
     # Initialize and train original (full dataset) and control (only the retain set) model
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = None
+    if torch.cuda.is_available():
+        device = torch.device('cuda')
+    elif torch.backends.mps.is_available():
+        device = torch.device('mps')
+    else:
+        device = torch.device('cpu')
+
     original_model, control_model = build_resnet50(num_classes, in_channels), build_resnet50(num_classes, in_channels)
     print('Training original model')
     original_train_hist = train_model(

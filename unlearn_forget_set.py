@@ -27,8 +27,14 @@ def main():
     # parser.add_argument('--dampening_constant', type=float, default=1, help='Dampening constant for SSD unlearning method (only applicable if using SSD)')
     # parser.add_argument('--selection_weighting', type=float, default=10, help='Selection weighting for SSD unlearning method (only applicable if using SSD)')
     args = parser.parse_args()
-    
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    device = None
+    if torch.cuda.is_available():
+        device = torch.device('cuda')
+    elif torch.backends.mps.is_available():
+        device = torch.device('mps')
+    else:
+        device = torch.device('cpu')
     
     # Deal with output path and save ther experiment arguments
     output_dir = Path(args.output_dir)

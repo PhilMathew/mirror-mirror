@@ -23,7 +23,13 @@ def main():
     parser.add_argument('-bs', '--batch_size', type=int, default=32, help='Number of training examples in a batch')
     args = parser.parse_args()
     
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = None
+    if torch.cuda.is_available():
+        device = torch.device('cuda')
+    elif torch.backends.mps.is_available():
+        device = torch.device('mps')
+    else:
+        device = torch.device('cpu')
     
     # Deal with output path and save ther experiment arguments
     output_dir = Path(args.output_dir)
