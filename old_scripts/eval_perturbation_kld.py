@@ -10,15 +10,17 @@ import torchvision
 
 from components.datasets import init_full_ds
 from components.resnet import build_resnet50
-from torch.nn import functional as F
+from distinguishers.random_perturbation_kld import compute_kld_over_perturbations
 import matplotlib.pyplot as plt
 import numpy as np
+from skimage.util import random_noise
 
 
 
 def main():
     parser = ArgumentParser('Script for distinguishing via randomly adding noise then computing KLD')
     parser.add_argument('-d', '--ds_type', help='Dataset to use for training (one of MNIST, CIFAR10, or CIFAR100)')
+    parser.add_argument('-p', '--perturbation_type', help='Type of perturbation to apply to the images') # TODO: Make README with options
     parser.add_argument('-f', '--forget_set_path', help='/path/to/file/defining/forget_set.csv')
     parser.add_argument('-om', '--original_checkpoint_path', help='/path/to/state/dict/for/original/model.pt')
     parser.add_argument('-u', '--unlearn_checkpoint_path', help='/path/to/state/dict/for/unlearned/model.pt')
@@ -27,13 +29,7 @@ def main():
     parser.add_argument('-bs', '--batch_size', type=int, default=32, help='Number of training examples in a batch')
     args = parser.parse_args()
     
-    device = None
-    if torch.cuda.is_available():
-        device = torch.device('cuda')
-    elif torch.backends.mps.is_available():
-        device = torch.device('mps')
-    else:
-        device = torch.device('cpu')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     # Deal with output path and save ther experiment arguments
     output_dir = Path(args.output_dir)
@@ -58,19 +54,39 @@ def main():
     original_model.load_state_dict(torch.load(str(original_ckpt)))
     unlearned_model.load_state_dict(torch.load(str(unlearn_ckpt)))
     control_model.load_state_dict(torch.load(str(control_ckpt)))
-
-    unlearned_mse = torch.zeros(1)
-    control_mse = torch.zeros(1)
     
-    for name, _ in original_model.named_parameters():
-        unlearned_mse += F.mse_loss(original_model.state_dict(name), unlearned_model.state_dict(name))
-        control_mse += F.mse_loss(original_model.state_dict(name), control_model.state_dict(name))
+    match args.perturbation_type:
+        case 'gaussian':
+            perturbation_fn = lambda x: x + torch.normal(0, 0.01, x.shape)
+        case _:
+            raise ValueError(f'"{args.perturbation_type}" is an unknown type of image perturbation')
     
+    print('Getting KLD score for unlearned model')
+    unlearn_kld_score = compute_kld_over_perturbations(
+        unlearned_model, 
+        original_model,
+        forget_ds,
+        perturbation_fn,
+        seed=0,
+        device=device,
+        batch_size=args.batch_size
+    )
+    
+    print('Getting KLD score for control model')
+    control_kld_score = compute_kld_over_perturbations(
+        control_model, 
+        original_model,
+        forget_ds,
+        perturbation_fn,
+        seed=0,
+        device=device,
+        batch_size=args.batch_size
+    )
     
     results_dict = {
-        'unlearn_score': unlearned_mse,
-        'control_score': control_mse,
-        'outcome': 'unlearn' if unlearned_mse < control_mse else 'control'
+        'unlearn_score': unlearn_kld_score,
+        'control_score': control_kld_score,
+        'outcome': 'unlearn' if unlearn_kld_score < control_kld_score else 'control'
     }
     results_df = pd.DataFrame({k: v if isinstance(v, list) else [v] for k, v in results_dict.items()})
     results_df.to_csv(str(output_dir / f'kld_random_{args.perturbation_type}_results.csv'), index=False)

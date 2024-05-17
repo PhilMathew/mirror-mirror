@@ -36,7 +36,7 @@ class RandomPerturbationDataset(Dataset):
 
 
 def compute_kld_over_perturbations(
-    query_model: nn.Module, 
+    candidate_model: nn.Module, 
     original_model: nn.Module, 
     dataset: Dataset, 
     perturbation_fn: Callable[[torch.Tensor], torch.Tensor], 
@@ -45,9 +45,9 @@ def compute_kld_over_perturbations(
     batch_size: int = 32, 
     num_workers: int = 16
 ) -> float:
-    query_model = query_model.to(device)
+    candidate_model = candidate_model.to(device)
     original_model = original_model.to(device)
-    query_model.eval()
+    candidate_model.eval()
     original_model.eval()
     
     perturbation_ds = RandomPerturbationDataset(dataset, perturbation_fn, seed)
@@ -58,7 +58,7 @@ def compute_kld_over_perturbations(
         for batch in tqdm(perturbation_dl, desc='Getting Model Outputs'):
             x, _ = batch
             x = x.to(device)
-            query_pred = F.log_softmax(query_model(x), dim=-1).cpu()
+            query_pred = F.log_softmax(candidate_model(x), dim=-1).cpu()
             orig_pred = F.log_softmax(original_model(x), dim=-1).cpu()
             query_preds.append(query_pred)
             orig_preds.append(orig_pred)
