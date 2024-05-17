@@ -300,10 +300,14 @@ def main():
         output_dir=output_dir,
         **train_params
     )
+    original_state_dict_path = output_dir / 'original' / 'original_state_dict.pt'
     
     # Iterate over all the desired forget sets
     score_dicts = {d: {k: [] for k in ('forget_set', 'model', 'score')} for d in distinguisher_params.keys()}
     for class_to_forget in dataset_params['forget_sets']:
+        # We have to reload the original model the unlearning methods appear to act in place
+        original_model.load_state_dict(torch.load(str(original_state_dict_path)))
+        
         num_forget = dataset_params['forget_set_size'] if class_to_forget == 'random' else None
         forget_set_name = f'forget_{class_to_forget}{f"_{num_forget}" if num_forget is not None else ""}'
         
@@ -344,7 +348,7 @@ def main():
             unlearned_model = run_unlearning(
                 unlearning_method=unlearning_method,
                 unlearning_params=unlearning_params,
-                original_model=original_model.clone(),
+                original_model=original_model,
                 forget_ds=forget_ds,
                 full_train_ds=full_train_ds,
                 retain_ds=retain_ds,
@@ -355,6 +359,10 @@ def main():
                 output_dir=curr_output_dir
             )
             models_to_score[unlearning_method] = unlearned_model.cpu()
+            # We have to reload the original model the unlearning methods appear to act in place
+            original_model.load_state_dict(torch.load(str(original_state_dict_path)))
+        
+        
         
         # Get distinguisher scores for the models
         for distinguisher, curr_distinguisher_params in distinguisher_params.items():

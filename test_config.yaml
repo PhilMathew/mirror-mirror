@@ -2,7 +2,8 @@ dataset_params:
   dataset_name: MNIST
   forget_sets:
     - '0'
-    - '1'
+    - '5'
+    - '9'
   forget_set_size: 7000 # Only used for random forget sets
 distinguisher_params:
   mia:
@@ -13,7 +14,7 @@ distinguisher_params:
 unlearning_methods:
   ssd:
     dampening_constant: 1
-    selection_weighting: 10
+    selection_weighting: 20
   # fisher_forgetting: null
   # amnesiac: null
 batch_size: 256

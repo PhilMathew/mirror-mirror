@@ -10,7 +10,6 @@ from torch.nn import functional as F
 from torch.utils.data import DataLoader, Dataset, ConcatDataset
 
 from .selective_synaptic_dampening.src import ssd
-# from .selective_synaptic_dampening.src.unlearn import *
 
 
 def get_classwise_ds(ds, num_classes):

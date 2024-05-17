@@ -22,6 +22,7 @@ unlearning_methods:
   ssd:
     dampening_constant: 1
     selection_weighting: 5
+  # fisher_forgetting: null
 batch_size: 256
 train_params:
   num_epochs: 200
