@@ -36,6 +36,7 @@ def training_step(model, batch, device):
 
 
 def fit_one_unlearning_cycle(epochs, model, train_loader, lr, device):
+    model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     for _ in range(epochs):
         model.train()
@@ -52,35 +53,35 @@ def fit_one_unlearning_cycle(epochs, model, train_loader, lr, device):
             lrs.append(get_lr(optimizer))
 
 
-# # TODO: Actually read the paper to understand what's happening in this unlearning method
-# def run_amnesiac(
-#     model,
-#     retain_ds,
-#     forget_ds,
-#     num_classes,
-#     forget_class,
-#     device
-# ):
-#     unlearning_labels = list(range(num_classes))
-#     unlearning_trainset = []
+# TODO: Actually read the paper to understand what's happening in this unlearning method
+def run_amnesiac(
+    model,
+    retain_ds,
+    forget_ds,
+    num_classes,
+    forget_class,
+    device
+):
+    unlearning_labels = list(range(num_classes))
+    unlearning_trainset = []
 
-#     unlearning_labels.remove(forget_class)
+    unlearning_labels.remove(forget_class)
 
-#     for x, clabel in forget_ds:
-#         unlearning_trainset.append((x, random.choice(unlearning_labels)))
+    for x, clabel in forget_ds:
+        unlearning_trainset.append((x, random.choice(unlearning_labels)))
 
-#     for x, clabel in retain_ds:
-#         unlearning_trainset.append((x, clabel))
+    for x, clabel in retain_ds:
+        unlearning_trainset.append((x, clabel))
 
-#     unlearning_train_set_dl = DataLoader(
-#         unlearning_trainset, 128, pin_memory=True, shuffle=True
-#     )
+    unlearning_train_set_dl = DataLoader(
+        unlearning_trainset, 128, pin_memory=True, shuffle=True
+    )
 
-#     fit_one_unlearning_cycle(
-#         3, model, unlearning_train_set_dl, device=device, lr=0.0001
-#     )
+    fit_one_unlearning_cycle(
+        3, model, unlearning_train_set_dl, device=device, lr=0.0001
+    )
     
-#     return model
+    return model
 
 
 def run_fisher_forgetting(

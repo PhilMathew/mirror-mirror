@@ -121,55 +121,6 @@ def eval_model_performance(
     )
 
 
-def run_unlearning(
-    unlearning_method: str,
-    unlearning_params: dict,
-    original_model: nn.Module,
-    forget_ds: Dataset,
-    full_train_ds: Dataset,
-    retain_ds: Dataset,
-    test_ds: Dataset,
-    num_classes: int,
-    batch_size: int,
-    device: torch.device,
-    output_dir: Path
-) -> nn.Module:
-    match unlearning_method:
-        case 'ssd':
-            unlearned_model = run_ssd(
-                model=original_model,
-                forget_ds=forget_ds,
-                full_train_ds=full_train_ds,
-                dampening_constant=unlearning_params['dampening_constant'],
-                selection_weighting=unlearning_params['selection_weighting'],
-                device=device,
-                batch_size=batch_size
-            )
-        case 'fisher_forgetting':
-            unlearned_model = run_fisher_forgetting(
-                model=original_model,
-                retain_ds=retain_ds,
-                num_classes=num_classes,
-                device=device
-            )
-        case _:
-            raise ValueError(f'"{unlearning_method}" is an unknown unlearning method')
-        
-    unlearned_model_dir = output_dir / unlearning_method
-    unlearned_model_dir.mkdir(exist_ok=True)
-    torch.save(unlearned_model.state_dict(), str(unlearned_model_dir / f'{unlearning_method}_state_dict.pt'))
-    eval_model_performance(
-        model=unlearned_model,
-        test_ds=test_ds,
-        device=device,
-        batch_size=batch_size,
-        model_dir=unlearned_model_dir,
-        p_bar_desc=f'Testing unlearned model ({unlearning_method})'
-    )
-    
-    return unlearned_model
-
-
 def train_single_model(
     train_ds: Dataset,
     test_ds: Dataset,
@@ -206,6 +157,64 @@ def train_single_model(
     eval_model_performance(model, test_ds, device, batch_size, model_dir, p_bar_desc=f'Testing {model_name} model')
     
     return model
+
+
+def run_unlearning(
+    unlearning_method: str,
+    unlearning_params: dict,
+    original_model: nn.Module,
+    forget_ds: Dataset,
+    full_train_ds: Dataset,
+    retain_ds: Dataset,
+    test_ds: Dataset,
+    num_classes: int,
+    batch_size: int,
+    device: torch.device,
+    output_dir: Path
+) -> nn.Module:
+    match unlearning_method:
+        case 'ssd':
+            unlearned_model = run_ssd(
+                model=original_model,
+                forget_ds=forget_ds,
+                full_train_ds=full_train_ds,
+                dampening_constant=unlearning_params['dampening_constant'],
+                selection_weighting=unlearning_params['selection_weighting'],
+                device=device,
+                batch_size=batch_size
+            )
+        case 'fisher_forgetting':
+            unlearned_model = run_fisher_forgetting(
+                model=original_model,
+                retain_ds=retain_ds,
+                num_classes=num_classes,
+                device=device
+            )
+        case 'amnesiac':
+            unlearned_model = run_amnesiac(
+                model=original_model,
+                forget_ds=forget_ds,
+                retain_ds=retain_ds,
+                device=device,
+                num_classes=num_classes,
+                forget_class=forget_ds[0][-1]
+            )
+        case _:
+            raise ValueError(f'"{unlearning_method}" is an unknown unlearning method')
+        
+    unlearned_model_dir = output_dir / unlearning_method
+    unlearned_model_dir.mkdir(exist_ok=True)
+    torch.save(unlearned_model.state_dict(), str(unlearned_model_dir / f'{unlearning_method}_state_dict.pt'))
+    eval_model_performance(
+        model=unlearned_model,
+        test_ds=test_ds,
+        device=device,
+        batch_size=batch_size,
+        model_dir=unlearned_model_dir,
+        p_bar_desc=f'Testing unlearned model ({unlearning_method})'
+    )
+    
+    return unlearned_model
 
 
 def compute_distinguisher_score(
@@ -303,84 +312,101 @@ def main():
     original_state_dict_path = output_dir / 'original' / 'original_state_dict.pt'
     
     # Iterate over all the desired forget sets
-    score_dicts = {d: {k: [] for k in ('forget_set', 'model', 'score')} for d in distinguisher_params.keys()}
+    score_dicts = {d: {k: [] for k in ('forget_set', 'run_number', 'model', 'score')} for d in distinguisher_params.keys()}
     for class_to_forget in dataset_params['forget_sets']:
-        # We have to reload the original model the unlearning methods appear to act in place
-        original_model.load_state_dict(torch.load(str(original_state_dict_path)))
-        
-        num_forget = dataset_params['forget_set_size'] if class_to_forget == 'random' else None
-        forget_set_name = f'forget_{class_to_forget}{f"_{num_forget}" if num_forget is not None else ""}'
-        
-        # Create the directory to store everything under
-        curr_output_dir = output_dir / forget_set_name
-        curr_output_dir.mkdir(exist_ok=True)
-        
-        # Construct the forget set
-        forget_ds, forget_inds = generate_forget_set(
-            full_ds=full_train_ds,
-            num_classes=num_classes,
-            class_to_forget=class_to_forget,
-            num_forget=num_forget,
-            output_dir=curr_output_dir
-        )
-        
-        # Create copies of retain set with and without random augmentations
-        retain_inds = [i for i in range(len(full_train_ds)) if i not in forget_inds]
-        retain_ds = Subset(full_train_ds, indices=retain_inds)
-        retain_ds_random_aug = Subset(full_train_ds_random_aug, indices=retain_inds)
-        
-        # Train the control model
-        control_model = train_single_model(
-            train_ds=retain_ds_random_aug,
-            test_ds=test_ds,
-            num_classes=num_classes,
-            in_channels=in_channels,
-            batch_size=config_dict['batch_size'],
-            device=device,
-            model_name='control',
-            output_dir=curr_output_dir,
-            **train_params
-        )
-        
-        models_to_score = {'control': control_model.cpu()}
-        # Get unlearned models for each unlearning method
-        for unlearning_method, unlearning_params in unlearning_methods.items():
-            unlearned_model = run_unlearning(
-                unlearning_method=unlearning_method,
-                unlearning_params=unlearning_params,
-                original_model=original_model,
-                forget_ds=forget_ds,
-                full_train_ds=full_train_ds,
-                retain_ds=retain_ds,
-                test_ds=test_ds,
-                num_classes=num_classes,
-                batch_size=config_dict['batch_size'],
-                device=device,
-                output_dir=curr_output_dir
-            )
-            models_to_score[unlearning_method] = unlearned_model.cpu()
+        for run_num in range(10):
             # We have to reload the original model the unlearning methods appear to act in place
             original_model.load_state_dict(torch.load(str(original_state_dict_path)))
-        
-        
-        
-        # Get distinguisher scores for the models
-        for distinguisher, curr_distinguisher_params in distinguisher_params.items():
-            for model_name, model in models_to_score.items():
-                score = compute_distinguisher_score(
-                    distinguisher=distinguisher,
-                    candidate_model=model,
-                    original_model=original_model,
-                    forget_ds=forget_ds,
-                    retain_ds=retain_ds,
-                    test_ds=test_ds,
-                    batch_size=config_dict['batch_size'],
-                    device=device,
-                    distinguisher_params=curr_distinguisher_params
-                )
-                score_dicts[distinguisher]['forget_set'].append(forget_set_name[len("forget_"):])
-                score_dicts[distinguisher]['model'].append(model_name)
-                score_dicts[distinguisher]['score'].append(score)
+            
+            num_forget = dataset_params['forget_set_size'] if class_to_forget == 'random' else None
+            forget_set_name = f'forget_{class_to_forget}{f"_{num_forget}" if num_forget is not None else ""}'
+            
+            # Create the directory to store everything under
+            curr_output_dir = output_dir / forget_set_name / f'run_{run_num}'
+            curr_output_dir.mkdir(exist_ok=True, parents=True)
+            
+            # Construct the forget set
+            forget_ds, forget_inds = generate_forget_set(
+                full_ds=full_train_ds,
+                num_classes=num_classes,
+                class_to_forget=class_to_forget,
+                num_forget=num_forget,
+                output_dir=curr_output_dir
+            )
+            
+            # Create copies of retain set with and without random augmentations
+            retain_inds = [i for i in range(len(full_train_ds)) if i not in forget_inds]
+            retain_ds = Subset(full_train_ds, indices=retain_inds)
+            retain_ds_random_aug = Subset(full_train_ds_random_aug, indices=retain_inds)
+            
+            # Train the control model
+            control_model = train_single_model(
+                train_ds=retain_ds_random_aug,
+                test_ds=test_ds,
+                num_classes=num_classes,
+                in_channels=in_channels,
+                batch_size=config_dict['batch_size'],
+                device=device,
+                model_name='control',
+                output_dir=curr_output_dir,
+                **train_params
+            )
+            
+            models_to_score = {'control': control_model.cpu()}
+            # Get unlearned models for each unlearning method
+            for unlearning_method, unlearning_params in unlearning_methods.items():
+                if unlearning_method == 'sanity_check':
+                    curr_seed = torch.seed()
+                    torch.manual_seed(curr_seed + 1)
+                    unlearned_model = train_single_model(
+                        train_ds=retain_ds_random_aug,
+                        test_ds=test_ds,
+                        num_classes=num_classes,
+                        in_channels=in_channels,
+                        batch_size=config_dict['batch_size'],
+                        device=device,
+                        model_name='sanity_check',
+                        output_dir=curr_output_dir,
+                        **train_params
+                    )
+                else:
+                    unlearned_model = run_unlearning(
+                        unlearning_method=unlearning_method,
+                        unlearning_params=unlearning_params,
+                        original_model=original_model,
+                        forget_ds=forget_ds,
+                        full_train_ds=full_train_ds,
+                        retain_ds=retain_ds,
+                        test_ds=test_ds,
+                        num_classes=num_classes,
+                        batch_size=config_dict['batch_size'],
+                        device=device,
+                        output_dir=curr_output_dir
+                    )
+                models_to_score[unlearning_method] = unlearned_model.cpu()
+                # We have to reload the original model the unlearning methods appear to act in place
+                original_model.load_state_dict(torch.load(str(original_state_dict_path)))
+            
+            
+            
+            # Get distinguisher scores for the models
+            for distinguisher, curr_distinguisher_params in distinguisher_params.items():
+                for model_name, model in models_to_score.items():
+                    score = compute_distinguisher_score(
+                        distinguisher=distinguisher,
+                        candidate_model=model,
+                        original_model=original_model,
+                        forget_ds=forget_ds,
+                        retain_ds=retain_ds,
+                        test_ds=test_ds,
+                        batch_size=config_dict['batch_size'],
+                        device=device,
+                        distinguisher_params=curr_distinguisher_params
+                    )
+                    score_dicts[distinguisher]['forget_set'].append(forget_set_name[len("forget_"):])
+                    score_dicts[distinguisher]['run_number'].append(run_num)
+                    score_dicts[distinguisher]['model'].append(model_name)
+                    score_dicts[distinguisher]['score'].append(score)
     
     # Save the resulting scores from each distinguisher into a separate CSV
     for distinguisher, score_dict in score_dicts.items():

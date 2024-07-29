@@ -51,6 +51,7 @@ class ResNet(torchvision.models.ResNet):
             replace_stride_with_dilation, 
             norm_layer
         )
+        self.in_channels = in_channels
         self.conv1 = nn.Conv2d(in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
 
 
