@@ -55,7 +55,7 @@ def compute_kld_over_perturbations(
     
     with torch.no_grad():
         query_preds, orig_preds = [], []
-        for batch in tqdm(perturbation_dl, desc='Getting Model Outputs'):
+        for batch in perturbation_dl:
             x, _ = batch
             x = x.to(device)
             query_pred = F.log_softmax(candidate_model(x), dim=-1).cpu()
