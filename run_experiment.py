@@ -232,7 +232,7 @@ def compute_distinguisher_score(
         case 'mia':
             match distinguisher_params['mia_type']:
                 case 'logreg':
-                    distinguisher_score, _ = run_logreg_mia(
+                    distinguisher_score = run_logreg_mia(
                         model=candidate_model,
                         model_forget_ds=forget_ds,
                         model_retain_ds=retain_ds,
@@ -272,6 +272,7 @@ def main():
     parser = ArgumentParser('Script to run an unlearning experiment')
     parser.add_argument('-c', '--config_path', help='/path/to/experiment/config.yaml') # TODO: Make an example YAML
     parser.add_argument('-o', '--output_dir', default='.', help='/path/to/output/directory')
+    parser.add_argument('--use_existing_models', action='store_true', help='Uses trained models from a previous experiment')
     args = parser.parse_args()
     
     # Load in the config
@@ -297,19 +298,26 @@ def main():
     # We make a second copy of the training set with random augmentations applied, which we use for training
     full_train_ds_random_aug, _, _, _ = init_full_ds(dataset_params['dataset_name'], use_random_train_aug=True)
     
-    # Train the original model (M1) on the whole dataset
-    original_model = train_single_model(
-        train_ds=full_train_ds_random_aug,
-        test_ds=test_ds,
-        num_classes=num_classes,
-        in_channels=in_channels,
-        batch_size=config_dict['batch_size'],
-        device=device,
-        model_name='original',
-        output_dir=output_dir,
-        **train_params
-    )
     original_state_dict_path = output_dir / 'original' / 'original_state_dict.pt'
+    if args.use_existing_models:
+        original_model = build_resnet50(num_classes, in_channels)
+        original_model.load_state_dict(torch.load(str(original_state_dict_path)))
+        original_model = original_model.to(device)
+        print(f'Using pre-trained original model from {original_state_dict_path}')
+    else:
+        # Train the original model (M1) on the whole dataset
+        original_model = train_single_model(
+            train_ds=full_train_ds_random_aug,
+            test_ds=test_ds,
+            num_classes=num_classes,
+            in_channels=in_channels,
+            batch_size=config_dict['batch_size'],
+            device=device,
+            model_name='original',
+            output_dir=output_dir,
+            **train_params
+        )
+        
     
     # Iterate over all the desired forget sets
     score_dicts = {d: {k: [] for k in ('forget_set', 'run_number', 'model', 'score')} for d in distinguisher_params.keys()}
@@ -326,13 +334,18 @@ def main():
             curr_output_dir.mkdir(exist_ok=True, parents=True)
             
             # Construct the forget set
-            forget_ds, forget_inds = generate_forget_set(
-                full_ds=full_train_ds,
-                num_classes=num_classes,
-                class_to_forget=class_to_forget,
-                num_forget=num_forget,
-                output_dir=curr_output_dir
-            )
+            if args.use_existing_models:
+                forget_set_df = pd.read_csv(str(curr_output_dir / 'forget_set.csv'))
+                forget_inds = list(forget_set_df['sample_ind'])
+                forget_ds = Subset(full_train_ds, indices=forget_inds)
+            else:
+                forget_ds, forget_inds = generate_forget_set(
+                    full_ds=full_train_ds,
+                    num_classes=num_classes,
+                    class_to_forget=class_to_forget,
+                    num_forget=num_forget,
+                    output_dir=curr_output_dir
+                )
             
             # Create copies of retain set with and without random augmentations
             retain_inds = [i for i in range(len(full_train_ds)) if i not in forget_inds]
@@ -340,49 +353,59 @@ def main():
             retain_ds_random_aug = Subset(full_train_ds_random_aug, indices=retain_inds)
             
             # Train the control model
-            control_model = train_single_model(
-                train_ds=retain_ds_random_aug,
-                test_ds=test_ds,
-                num_classes=num_classes,
-                in_channels=in_channels,
-                batch_size=config_dict['batch_size'],
-                device=device,
-                model_name='control',
-                output_dir=curr_output_dir,
-                **train_params
-            )
+            if args.use_existing_models:
+                control_model = build_resnet50(num_classes, in_channels)
+                control_model.load_state_dict(torch.load(str(curr_output_dir / 'control' / 'control_state_dict.pt')))
+                control_model = control_model.to(device)
+            else:
+                control_model = train_single_model(
+                    train_ds=retain_ds_random_aug,
+                    test_ds=test_ds,
+                    num_classes=num_classes,
+                    in_channels=in_channels,
+                    batch_size=config_dict['batch_size'],
+                    device=device,
+                    model_name='control',
+                    output_dir=curr_output_dir,
+                    **train_params
+                )
             
             models_to_score = {'control': control_model.cpu()}
             # Get unlearned models for each unlearning method
             for unlearning_method, unlearning_params in unlearning_methods.items():
-                if unlearning_method == 'sanity_check':
-                    curr_seed = torch.seed()
-                    torch.manual_seed(curr_seed + 1)
-                    unlearned_model = train_single_model(
-                        train_ds=retain_ds_random_aug,
-                        test_ds=test_ds,
-                        num_classes=num_classes,
-                        in_channels=in_channels,
-                        batch_size=config_dict['batch_size'],
-                        device=device,
-                        model_name='sanity_check',
-                        output_dir=curr_output_dir,
-                        **train_params
-                    )
+                if args.use_existing_models:
+                    unlearned_model = build_resnet50(num_classes, in_channels)
+                    unlearned_model.load_state_dict(torch.load(str(curr_output_dir / unlearning_method / f'{unlearning_method}_state_dict.pt')))
+                    unlearned_model.to(device)
                 else:
-                    unlearned_model = run_unlearning(
-                        unlearning_method=unlearning_method,
-                        unlearning_params=unlearning_params,
-                        original_model=original_model,
-                        forget_ds=forget_ds,
-                        full_train_ds=full_train_ds,
-                        retain_ds=retain_ds,
-                        test_ds=test_ds,
-                        num_classes=num_classes,
-                        batch_size=config_dict['batch_size'],
-                        device=device,
-                        output_dir=curr_output_dir
-                    )
+                    if unlearning_method == 'sanity_check':
+                        curr_seed = torch.seed()
+                        torch.manual_seed(curr_seed + 1)
+                        unlearned_model = train_single_model(
+                            train_ds=retain_ds_random_aug,
+                            test_ds=test_ds,
+                            num_classes=num_classes,
+                            in_channels=in_channels,
+                            batch_size=config_dict['batch_size'],
+                            device=device,
+                            model_name='sanity_check',
+                            output_dir=curr_output_dir,
+                            **train_params
+                        )
+                    else:
+                        unlearned_model = run_unlearning(
+                            unlearning_method=unlearning_method,
+                            unlearning_params=unlearning_params,
+                            original_model=original_model,
+                            forget_ds=forget_ds,
+                            full_train_ds=full_train_ds,
+                            retain_ds=retain_ds,
+                            test_ds=test_ds,
+                            num_classes=num_classes,
+                            batch_size=config_dict['batch_size'],
+                            device=device,
+                            output_dir=curr_output_dir
+                        )
                 models_to_score[unlearning_method] = unlearned_model.cpu()
                 # We have to reload the original model the unlearning methods appear to act in place
                 original_model.load_state_dict(torch.load(str(original_state_dict_path)))
@@ -391,7 +414,7 @@ def main():
             
             # Get distinguisher scores for the models
             for distinguisher, curr_distinguisher_params in distinguisher_params.items():
-                for model_name, model in models_to_score.items():
+                for model_name, model in tqdm(models_to_score.items(), desc=f'Scoring models for {distinguisher} (run {run_num})'):
                     score = compute_distinguisher_score(
                         distinguisher=distinguisher,
                         candidate_model=model,
