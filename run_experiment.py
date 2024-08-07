@@ -323,6 +323,7 @@ def main():
     score_dicts = {d: {k: [] for k in ('forget_set', 'run_number', 'model', 'score')} for d in distinguisher_params.keys()}
     for class_to_forget in dataset_params['forget_sets']:
         for run_num in range(10):
+            print(f'Forget set: {class_to_forget}, Run number: {run_num}')
             # We have to reload the original model the unlearning methods appear to act in place
             original_model.load_state_dict(torch.load(str(original_state_dict_path)))
             
@@ -414,7 +415,7 @@ def main():
             
             # Get distinguisher scores for the models
             for distinguisher, curr_distinguisher_params in distinguisher_params.items():
-                for model_name, model in tqdm(models_to_score.items(), desc=f'Scoring models for {distinguisher} (run {run_num})'):
+                for model_name, model in tqdm(models_to_score.items(), desc=f'Scoring models for {distinguisher}'):
                     score = compute_distinguisher_score(
                         distinguisher=distinguisher,
                         candidate_model=model,
