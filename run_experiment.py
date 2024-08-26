@@ -245,7 +245,9 @@ def compute_distinguisher_score(
         case 'kld':
             match distinguisher_params['perturbation_type']:
                 case 'gaussian':
-                    perturbation_fn = lambda x: x + torch.normal(0, 0.01, x.shape)
+                    perturbation_fn = lambda x: x + torch.normal(0, 0.1, x.shape)
+                case 'no_perturbation':
+                    perturbation_fn = lambda x: x
                 case _:
                     raise ValueError(f'"{distinguisher_params["perturbation_type"]}" is an unknown type of image perturbation')
             distinguisher_score = compute_kld_over_perturbations(
@@ -321,13 +323,15 @@ def main():
     
     # Iterate over all the desired forget sets
     score_dicts = {d: {k: [] for k in ('forget_set', 'run_number', 'model', 'score')} for d in distinguisher_params.keys()}
-    for class_to_forget in dataset_params['forget_sets']:
-        for run_num in range(10):
+    for forget_set_ind, class_to_forget in enumerate(dataset_params['forget_sets']):
+        for run_num in range(config_dict['runs_per_forget_set']):
             print(f'Forget set: {class_to_forget}, Run number: {run_num}')
             # We have to reload the original model the unlearning methods appear to act in place
             original_model.load_state_dict(torch.load(str(original_state_dict_path)))
-            
-            num_forget = dataset_params['forget_set_size'] if class_to_forget == 'random' else None
+            if isinstance(dataset_params['forget_set_size'], list):
+                num_forget = dataset_params['forget_set_size'][forget_set_ind]
+            else:
+                num_forget = dataset_params['forget_set_size'] if class_to_forget == 'random' else None
             forget_set_name = f'forget_{class_to_forget}{f"_{num_forget}" if num_forget is not None else ""}'
             
             # Create the directory to store everything under
@@ -427,6 +431,7 @@ def main():
                         device=device,
                         distinguisher_params=curr_distinguisher_params
                     )
+                    
                     score_dicts[distinguisher]['forget_set'].append(forget_set_name[len("forget_"):])
                     score_dicts[distinguisher]['run_number'].append(run_num)
                     score_dicts[distinguisher]['model'].append(model_name)

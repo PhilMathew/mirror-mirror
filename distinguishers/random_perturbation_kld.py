@@ -63,6 +63,7 @@ def compute_kld_over_perturbations(
             query_preds.append(query_pred)
             orig_preds.append(orig_pred)
         query_preds, orig_preds = torch.cat(query_preds, dim=0), torch.cat(orig_preds, dim=0)
-        kld = F.kl_div(query_pred, orig_pred, reduction='batchmean', log_target=True).item()
+        # breakpoint()  
+        kld = F.kl_div(query_preds, orig_preds, reduction='batchmean', log_target=True).item()
     
     return kld

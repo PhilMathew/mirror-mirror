@@ -11,6 +11,6 @@ def calc_mse_score(
 ) -> float:
     mse_score = 0
     for name, _ in original_model.named_parameters():
-        mse_score += F.mse_loss(original_model.state_dict()[name], candidate_model.state_dict()[name])
+        mse_score += F.mse_loss(original_model.state_dict()[name].cpu(), candidate_model.state_dict()[name].cpu())
     
     return mse_score.item()
