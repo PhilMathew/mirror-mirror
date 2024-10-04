@@ -1,0 +1,50 @@
+dataset_params:
+  dataset_name: CIFAR10
+  forget_sets:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 'random'
+    - 'random'
+    - 'random'
+    - 'random'
+    - 'random'
+    - 'random'
+    - 'random'
+    - 'random'
+    - 'random'
+  forget_set_size: 
+    - 3
+    - 6
+    - 30
+    - 60
+    - 300
+    - 600
+    - 3000
+    - 6000 # Only used for random forget sets
+    - 15000
+distinguisher_params:
+  mia:
+    mia_type: logreg
+  kld: 
+    perturbation_type: gaussian
+  mse: null
+unlearning_methods:
+  sanity_check: null
+  ssd:
+    dampening_constant: 1
+    selection_weighting: 5
+  fisher_forgetting: null
+  amnesiac: null
+batch_size: 256
+train_params:
+  num_epochs: 200
+  learning_rate: 0.1
+runs_per_forget_set: 1
