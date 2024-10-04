@@ -168,6 +168,7 @@ def run_unlearning(
     retain_ds: Dataset,
     test_ds: Dataset,
     num_classes: int,
+    in_channels: int,
     batch_size: int,
     device: torch.device,
     output_dir: Path
@@ -198,6 +199,15 @@ def run_unlearning(
                 device=device,
                 num_classes=num_classes,
                 forget_class=forget_ds[0][-1]
+            )
+        case 'bad_teacher':
+            unlearning_teacher = build_resnet50(num_classes, in_channels).to(device)
+            unlearned_model = run_bad_teacher(
+                model=original_model,
+                unlearning_teacher=unlearning_teacher,
+                forget_ds=forget_ds,
+                retain_ds=retain_ds,
+                device=device
             )
         case _:
             raise ValueError(f'"{unlearning_method}" is an unknown unlearning method')
@@ -325,7 +335,6 @@ def main():
     score_dicts = {d: {k: [] for k in ('forget_set', 'run_number', 'model', 'score')} for d in distinguisher_params.keys()}
     for forget_set_ind, class_to_forget in enumerate(dataset_params['forget_sets']):
         for run_num in range(config_dict['runs_per_forget_set']):
-            print(f'Forget set: {class_to_forget}, Run number: {run_num}')
             # We have to reload the original model the unlearning methods appear to act in place
             original_model.load_state_dict(torch.load(str(original_state_dict_path)))
             if isinstance(dataset_params['forget_set_size'], list):
@@ -333,13 +342,14 @@ def main():
             else:
                 num_forget = dataset_params['forget_set_size'] if class_to_forget == 'random' else None
             forget_set_name = f'forget_{class_to_forget}{f"_{num_forget}" if num_forget is not None else ""}'
+            print(f'Forget set: {forget_set_name}, Run number: {run_num}')
             
             # Create the directory to store everything under
             curr_output_dir = output_dir / forget_set_name / f'run_{run_num}'
             curr_output_dir.mkdir(exist_ok=True, parents=True)
             
             # Construct the forget set
-            if args.use_existing_models:
+            if args.use_existing_models and (curr_output_dir / 'forget_set.csv').exists():
                 forget_set_df = pd.read_csv(str(curr_output_dir / 'forget_set.csv'))
                 forget_inds = list(forget_set_df['sample_ind'])
                 forget_ds = Subset(full_train_ds, indices=forget_inds)
@@ -358,7 +368,7 @@ def main():
             retain_ds_random_aug = Subset(full_train_ds_random_aug, indices=retain_inds)
             
             # Train the control model
-            if args.use_existing_models:
+            if args.use_existing_models and (curr_output_dir / 'control' / 'control_state_dict.pt').exists():
                 control_model = build_resnet50(num_classes, in_channels)
                 control_model.load_state_dict(torch.load(str(curr_output_dir / 'control' / 'control_state_dict.pt')))
                 control_model = control_model.to(device)
@@ -378,7 +388,7 @@ def main():
             models_to_score = {'control': control_model.cpu()}
             # Get unlearned models for each unlearning method
             for unlearning_method, unlearning_params in unlearning_methods.items():
-                if args.use_existing_models:
+                if args.use_existing_models and (curr_output_dir / unlearning_method / f'{unlearning_method}_state_dict.pt').exists():
                     unlearned_model = build_resnet50(num_classes, in_channels)
                     unlearned_model.load_state_dict(torch.load(str(curr_output_dir / unlearning_method / f'{unlearning_method}_state_dict.pt')))
                     unlearned_model.to(device)
@@ -407,6 +417,7 @@ def main():
                             retain_ds=retain_ds,
                             test_ds=test_ds,
                             num_classes=num_classes,
+                            in_channels=in_channels,
                             batch_size=config_dict['batch_size'],
                             device=device,
                             output_dir=curr_output_dir

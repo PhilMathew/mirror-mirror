@@ -1,4 +1,4 @@
-# Adapted from https://github.com/if-loops/selective-synaptic-dampening/blob/main/src/forget_full_class_strategies.py
+# Adapted from https://github.com/if-loops/selective-synaptic-dampening/
 import random
 from typing import *
 from copy import deepcopy
@@ -7,7 +7,8 @@ from tqdm import tqdm
 import torch
 from torch import nn
 from torch.nn import functional as F
-from torch.utils.data import DataLoader, Dataset, ConcatDataset
+from torch.utils.data import DataLoader, Dataset, ConcatDataset, Subset
+import numpy as np
 
 from .selective_synaptic_dampening.src import ssd
 
@@ -34,6 +35,77 @@ def training_step(model, batch, device):
     loss = F.cross_entropy(out, labels)  # Calculate loss
     return loss
 
+class UnLearningData(Dataset):
+    def __init__(self, forget_data, retain_data):
+        super().__init__()
+        self.forget_data = forget_data
+        self.retain_data = retain_data
+        self.forget_len = len(forget_data)
+        self.retain_len = len(retain_data)
+
+    def __len__(self):
+        return self.retain_len + self.forget_len
+
+    def __getitem__(self, index):
+        if index < self.forget_len:
+            x = self.forget_data[index][0]
+            y = 1
+            return x, y
+        else:
+            x = self.retain_data[index - self.forget_len][0]
+            y = 0
+            return x, y
+
+
+def UnlearnerLoss(
+    output, 
+    labels, 
+    full_teacher_logits, 
+    unlearn_teacher_logits, 
+    KL_temperature
+):
+    labels = torch.unsqueeze(labels, dim=1)
+
+    f_teacher_out = F.softmax(full_teacher_logits / KL_temperature, dim=1)
+    u_teacher_out = F.softmax(unlearn_teacher_logits / KL_temperature, dim=1)
+
+    # label 1 means forget sample
+    # label 0 means retain sample
+    overall_teacher_out = labels * u_teacher_out + (1 - labels) * f_teacher_out
+    student_out = F.log_softmax(output / KL_temperature, dim=1)
+    return F.kl_div(student_out, overall_teacher_out, reduction='batchmean')
+
+
+def unlearning_step(
+    model,
+    unlearning_teacher,
+    full_trained_teacher,
+    unlearn_data_loader,
+    optimizer,
+    device,
+    KL_temperature,
+):
+    losses = []
+    for batch in unlearn_data_loader:
+        x, y = batch
+        x, y = x.to(device), y.to(device)
+        with torch.no_grad():
+            full_teacher_logits = full_trained_teacher(x)
+            unlearn_teacher_logits = unlearning_teacher(x)
+        output = model(x)
+        optimizer.zero_grad()
+        loss = UnlearnerLoss(
+            output=output,
+            labels=y,
+            full_teacher_logits=full_teacher_logits,
+            unlearn_teacher_logits=unlearn_teacher_logits,
+            KL_temperature=KL_temperature,
+        )
+        loss.backward()
+        optimizer.step()
+        losses.append(loss.detach().cpu().numpy())
+    return np.mean(losses)
+
 
 def fit_one_unlearning_cycle(epochs, model, train_loader, lr, device):
     model = model.to(device)
@@ -53,7 +125,83 @@ def fit_one_unlearning_cycle(epochs, model, train_loader, lr, device):
             lrs.append(get_lr(optimizer))
 
 
-# TODO: Actually read the paper to understand what's happening in this unlearning method
+# TODO: Assuming this is bad teacher?
+def blindspot_unlearner(
+    model,
+    unlearning_teacher,
+    full_trained_teacher,
+    retain_data,
+    forget_data,
+    epochs=10,
+    optimizer="adam",
+    lr=0.01,
+    batch_size=256,
+    device="cuda",
+    KL_temperature=1,
+):
+    # creating the unlearning dataset.
+    unlearning_data = UnLearningData(forget_data=forget_data, retain_data=retain_data)
+    unlearning_loader = DataLoader(
+        unlearning_data, batch_size=batch_size, shuffle=True, pin_memory=True
+    )
+
+    unlearning_teacher.eval()
+    full_trained_teacher.eval()
+    optimizer = optimizer
+    if optimizer == "adam":
+        optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    else:
+        # if optimizer is not a valid string, then assuming it as a function to return optimizer
+        optimizer = optimizer  # (model.parameters())
+
+    for epoch in range(epochs):
+        loss = unlearning_step(
+            model=model,
+            unlearning_teacher=unlearning_teacher,
+            full_trained_teacher=full_trained_teacher,
+            unlearn_data_loader=unlearning_loader,
+            optimizer=optimizer,
+            device=device,
+            KL_temperature=KL_temperature,
+        )
+    
+    return model
+
+
+# TODO: Originally called blindspot, but afaik it is bad teacher??
+def run_bad_teacher(
+    model,
+    unlearning_teacher,
+    retain_ds,
+    forget_ds,
+    device
+):
+    student_model = deepcopy(model)
+    b_s, KL_temperature = 256, 1
+    optimizer = torch.optim.Adam(student_model.parameters(), lr=0.0001)
+    
+    retain_train_subset_inds = random.sample(
+        range(len(retain_ds)), int(0.3 * len(retain_ds))
+    )
+    retain_train_subset = Subset(retain_ds, retain_train_subset_inds)
+
+    blindspot_unlearner(
+        model=student_model,
+        unlearning_teacher=unlearning_teacher,
+        full_trained_teacher=model,
+        retain_data=retain_train_subset,
+        forget_data=forget_ds,
+        epochs=1,
+        optimizer=optimizer,
+        lr=0.0001,
+        batch_size=b_s,
+        device=device,
+        KL_temperature=KL_temperature,
+    )
+
+    return student_model
+
+
 def run_amnesiac(
     model,
     retain_ds,
