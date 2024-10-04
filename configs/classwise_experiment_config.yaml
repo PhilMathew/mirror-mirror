@@ -11,25 +11,7 @@ dataset_params:
     - 7
     - 8
     - 9
-    - 'random'
-    - 'random'
-    - 'random'
-    - 'random'
-    - 'random'
-    - 'random'
-    - 'random'
-    - 'random'
-    - 'random'
-  forget_set_size: 
-    - 3
-    - 6
-    - 30
-    - 60
-    - 300
-    - 600
-    - 3000
-    - 6000 # Only used for random forget sets
-    - 15000
+  forget_set_size: null
 distinguisher_params:
   mia:
     mia_type: logreg
@@ -37,11 +19,10 @@ distinguisher_params:
     perturbation_type: gaussian
   mse: null
 unlearning_methods:
-  sanity_check: null
   ssd:
     dampening_constant: 1
     selection_weighting: 5
-  fisher_forgetting: null
+  bad_teacher: null
   amnesiac: null
 batch_size: 256
 train_params:
