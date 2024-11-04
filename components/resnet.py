@@ -53,30 +53,8 @@ class ResNet(torchvision.models.ResNet):
         )
         self.in_channels = in_channels
         self.conv1 = nn.Conv2d(in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
-
-
-def build_resnet50(num_classes: int, in_channels: int) -> ResNet:
-    """
-    Build ResNet50 model
-
-    :param num_classes: Number of output classes
-    :type num_classes: int
-    :param in_channels: Number of channels in input data
-    :type in_channels: int
-    :return: ResNet50 model
-    :rtype: ResNet
-    """
-    model = ResNet(
-        block=Bottleneck, 
-        layers=[3, 4, 6, 3],
-        in_channels=in_channels,
-        num_classes=num_classes
-    )
     
-    return model
-
-
-def build_resnet50(num_classes: int, in_channels: int) -> ResNet:
+def build_resnet50(num_classes: int, in_channels: int, norm_layer='batch') -> ResNet:
     """
     Build ResNet18 model
 
@@ -87,11 +65,17 @@ def build_resnet50(num_classes: int, in_channels: int) -> ResNet:
     :return: ResNet18 model
     :rtype: ResNet
     """
+    
+    if norm_layer != 'batch':
+        norm_layer = nn.InstanceNorm2d
+    else:
+        norm_layer = nn.BatchNorm2d
     model = ResNet(
         block=BasicBlock, 
         layers=[2, 2, 2, 2],
         in_channels=in_channels,
-        num_classes=num_classes
+        num_classes=num_classes,
+        norm_layer=norm_layer
     )
     
     return model

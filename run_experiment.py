@@ -24,6 +24,7 @@ from distinguishers.mse_score import calc_mse_score
 from unlearning_frameworks.unlearning_methods import *
 from utils.plot_utils import plot_confmat, plot_history
 from utils.train_utils import test_model, train_model
+import copy
 
 
 CONFIG_PATH = Path('experiment_config.yaml')
@@ -132,8 +133,10 @@ def train_single_model(
     device: torch.device,
     model_name: str,
     output_dir: Path,
+    norm_layer: str = 'batch',
+    use_differential_privacy: bool=False,
 ) -> nn.Module:
-    model =  build_resnet50(num_classes, in_channels)
+    model =  build_resnet50(num_classes, in_channels, norm_layer=norm_layer)
     print(f'Training {model_name} model')
     train_hist = train_model(
         model=model,
@@ -141,7 +144,8 @@ def train_single_model(
         device=device,
         batch_size=batch_size,
         num_epochs=num_epochs,
-        lr=learning_rate
+        lr=learning_rate,
+        use_differential_privacy=use_differential_privacy
     )
     
     # Save out training history and model state dict
@@ -208,6 +212,13 @@ def run_unlearning(
                 forget_ds=forget_ds,
                 retain_ds=retain_ds,
                 device=device
+            )
+        case 'dp_sgd':
+            unlearned_model = run_dp_sgd(model=original_model,
+                forget_ds=forget_ds,
+                full_train_ds = full_train_ds,
+                device=device,
+                **unlearning_params
             )
         case _:
             raise ValueError(f'"{unlearning_method}" is an unknown unlearning method')
@@ -283,7 +294,7 @@ def compute_distinguisher_score(
 def main():
     parser = ArgumentParser('Script to run an unlearning experiment')
     parser.add_argument('-c', '--config_path', help='/path/to/experiment/config.yaml') # TODO: Make an example YAML
-    parser.add_argument('-o', '--output_dir', default='.', help='/path/to/output/directory')
+    parser.add_argument('-o', '--output_dir', default='./output', help='/path/to/output/directory')
     parser.add_argument('--use_existing_models', action='store_true', help='Uses trained models from a previous experiment')
     args = parser.parse_args()
     
@@ -309,10 +320,9 @@ def main():
     full_train_ds, test_ds, num_classes, in_channels = init_full_ds(dataset_params['dataset_name'])
     # We make a second copy of the training set with random augmentations applied, which we use for training
     full_train_ds_random_aug, _, _, _ = init_full_ds(dataset_params['dataset_name'], use_random_train_aug=True)
-    
     original_state_dict_path = output_dir / 'original' / 'original_state_dict.pt'
     if args.use_existing_models:
-        original_model = build_resnet50(num_classes, in_channels)
+        original_model = build_resnet50(num_classes, in_channels, norm_layer=train_params['norm_layer'])
         original_model.load_state_dict(torch.load(str(original_state_dict_path)))
         original_model = original_model.to(device)
         print(f'Using pre-trained original model from {original_state_dict_path}')
@@ -369,7 +379,7 @@ def main():
             
             # Train the control model
             if args.use_existing_models and (curr_output_dir / 'control' / 'control_state_dict.pt').exists():
-                control_model = build_resnet50(num_classes, in_channels)
+                control_model = build_resnet50(num_classes, in_channels, norm_layer=train_params['norm_layer'])
                 control_model.load_state_dict(torch.load(str(curr_output_dir / 'control' / 'control_state_dict.pt')))
                 control_model = control_model.to(device)
             else:
@@ -389,7 +399,7 @@ def main():
             # Get unlearned models for each unlearning method
             for unlearning_method, unlearning_params in unlearning_methods.items():
                 if args.use_existing_models and (curr_output_dir / unlearning_method / f'{unlearning_method}_state_dict.pt').exists():
-                    unlearned_model = build_resnet50(num_classes, in_channels)
+                    unlearned_model = build_resnet50(num_classes, in_channels, norm_layer=train_params['norm_layer'])
                     unlearned_model.load_state_dict(torch.load(str(curr_output_dir / unlearning_method / f'{unlearning_method}_state_dict.pt')))
                     unlearned_model.to(device)
                 else:
@@ -411,7 +421,7 @@ def main():
                         unlearned_model = run_unlearning(
                             unlearning_method=unlearning_method,
                             unlearning_params=unlearning_params,
-                            original_model=original_model,
+                            original_model=copy.deepcopy(original_model),
                             forget_ds=forget_ds,
                             full_train_ds=full_train_ds,
                             retain_ds=retain_ds,

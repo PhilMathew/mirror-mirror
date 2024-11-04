@@ -65,6 +65,7 @@ def init_full_ds(ds_type: str, use_random_train_aug: bool = False) -> Tuple[Data
                     [
                         transforms.RandomCrop(32, padding=4),
                         transforms.RandomHorizontalFlip(),
+                        transforms.Resize(64),
                         transforms.ToTensor(),
                         transforms.Normalize(CIFAR_MEAN, CIFAR_STD),
                     ]
@@ -72,6 +73,7 @@ def init_full_ds(ds_type: str, use_random_train_aug: bool = False) -> Tuple[Data
             else:
                 train_transform = transforms.Compose(
                     [
+                        transforms.Resize(64),
                         transforms.ToTensor(),
                         transforms.Normalize(CIFAR_MEAN, CIFAR_STD),
                     ]
@@ -79,6 +81,7 @@ def init_full_ds(ds_type: str, use_random_train_aug: bool = False) -> Tuple[Data
             
             test_transform = transforms.Compose(
                 [
+                    transforms.Resize(64),
                     transforms.ToTensor(),
                     transforms.Normalize(CIFAR_MEAN, CIFAR_STD),
                 ]
