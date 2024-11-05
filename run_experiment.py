@@ -136,6 +136,7 @@ def train_single_model(
     output_dir: Path,
     norm_layer: str = 'batch',
     use_differential_privacy: bool = False,
+    **kwargs
 ) -> nn.Module:
     model = build_resnet18(
         num_classes, 
@@ -151,7 +152,8 @@ def train_single_model(
         batch_size=batch_size,
         num_epochs=num_epochs,
         lr=learning_rate,
-        use_differential_privacy=use_differential_privacy
+        use_differential_privacy=use_differential_privacy,
+        **kwargs
     )
     
     # Save out training history and model state dict

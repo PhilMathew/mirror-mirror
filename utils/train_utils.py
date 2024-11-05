@@ -4,6 +4,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from torch.utils.data import DataLoader, Dataset
+import numpy as np
 from tqdm import tqdm
 from opacus import PrivacyEngine
 
@@ -39,7 +40,8 @@ def train_model(
     lr: int = 1e-3,
     num_workers: int = 16,
     warmup_epochs: int = 1,
-    use_differential_privacy:bool=False,
+    use_differential_privacy: bool = False,
+    **kwargs
 ) -> Dict[str, List[float]]:
     """
     Trains a PyTorch model on a given dataset.
@@ -77,13 +79,21 @@ def train_model(
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=200)
     loss_fn = nn.CrossEntropyLoss()
     if use_differential_privacy:
+        assert 'lambda' in kwargs.keys(), "Delta must be specified for DP-SGD"
+        
+        # Based on theoretical values in paper
+        target_delta = 2**(-kwargs['lambda']) # just needs to be negligible in lambda
+        target_epsilon = np.log(1 + target_delta)
+        
         privacy_engine = PrivacyEngine()
-        model, optimizer, train_dl = privacy_engine.make_private(
+        model, optimizer, train_dl = privacy_engine.make_private_with_epsilon(
             module=model,
             optimizer=optimizer,
             data_loader=train_dl,
-            max_grad_norm=1.0,
-            noise_multiplier=0.5,
+            target_delta=target_delta,
+            target_epsilon=target_epsilon,
+            epochs=num_epochs,
+            max_grad_norm=1.0
         )
     
     history = {k: [] for k in ('train_loss', 'train_acc', 'val_loss', 'val_acc')}
