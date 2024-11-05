@@ -5,6 +5,8 @@ from torch import nn
 from torch.nn import functional as F
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
+from opacus import PrivacyEngine
+
 
 
 # From https://github.com/if-loops/selective-synaptic-dampening.git
@@ -37,6 +39,7 @@ def train_model(
     lr: int = 1e-3,
     num_workers: int = 16,
     warmup_epochs: int = 1,
+    use_differential_privacy:bool=False,
 ) -> Dict[str, List[float]]:
     """
     Trains a PyTorch model on a given dataset.
@@ -73,7 +76,15 @@ def train_model(
     optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=5e-4)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=200)
     loss_fn = nn.CrossEntropyLoss()
-    
+    if use_differential_privacy:
+        privacy_engine = PrivacyEngine()
+        model, optimizer, train_dl = privacy_engine.make_private(
+            module=model,
+            optimizer=optimizer,
+            data_loader=train_dl,
+            max_grad_norm=1.0,
+            noise_multiplier=0.5,
+        )
     
     history = {k: [] for k in ('train_loss', 'train_acc', 'val_loss', 'val_acc')}
     for epoch in range(1, num_epochs + 1):

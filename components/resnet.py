@@ -101,11 +101,17 @@ def build_resnet18(num_classes: int, in_channels: int, pretrained: bool = True) 
     :return: ResNet18 model
     :rtype: ResNet
     """
+    
+    if norm_layer != 'batch':
+        norm_layer = nn.InstanceNorm2d
+    else:
+        norm_layer = nn.BatchNorm2d
     model = ResNet(
         block=BasicBlock, 
         layers=[2, 2, 2, 2],
         in_channels=in_channels,
-        num_classes=num_classes
+        num_classes=num_classes,
+        norm_layer=norm_layer
     )
      
     if pretrained:
