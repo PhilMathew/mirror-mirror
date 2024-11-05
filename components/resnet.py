@@ -90,7 +90,7 @@ def build_resnet50(num_classes: int, in_channels: int, pretrained: bool = True) 
     return model
 
 
-def build_resnet18(num_classes: int, in_channels: int, pretrained: bool = True) -> ResNet:
+def build_resnet18(num_classes: int, in_channels: int, pretrained: bool = True, norm_layer: str = 'batch') -> ResNet:
     """
     Build ResNet18 model
 
