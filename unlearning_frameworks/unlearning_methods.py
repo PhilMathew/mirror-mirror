@@ -13,7 +13,7 @@ from torch.nn.utils import clip_grad_norm_
 from opacus import PrivacyEngine
 
 
-# from .selective_synaptic_dampening.src import ssd
+from .selective_synaptic_dampening.src import ssd
 
 
 def get_classwise_ds(ds, num_classes):

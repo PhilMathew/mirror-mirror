@@ -17,6 +17,7 @@ dependencies:
   - pip
   - pytorch-cuda=12.1
   - pytorch
+  - opacus
   - pip:
     - kaleido==0.2.1
     - seaborn==0.13.2
