@@ -3,6 +3,7 @@ import torchvision
 from torch import nn
 from torch.nn import functional as F
 from torchvision.models.resnet import BasicBlock, Bottleneck
+from torchvision.models import ResNet18_Weights, ResNet50_Weights
 from typing import *
 
 
@@ -49,13 +50,13 @@ class ResNet(torchvision.models.ResNet):
             groups, 
             width_per_group, 
             replace_stride_with_dilation, 
-            norm_layer
+            norm_layer,
         )
         self.in_channels = in_channels
         self.conv1 = nn.Conv2d(in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
 
 
-def build_resnet50(num_classes: int, in_channels: int) -> ResNet:
+def build_resnet50(num_classes: int, in_channels: int, pretrained: bool = True) -> ResNet:
     """
     Build ResNet50 model
 
@@ -73,10 +74,23 @@ def build_resnet50(num_classes: int, in_channels: int) -> ResNet:
         num_classes=num_classes
     )
     
+    if pretrained:
+        loaded_state = ResNet50_Weights.DEFAULT.get_state_dict(progress=True, check_hash=True)
+        curr_state = model.state_dict()
+        
+        state_dict = {}
+        for k in loaded_state.keys():
+            if 'fc' not in k.split('.'):
+                state_dict[k] = loaded_state[k]
+            else:
+                state_dict[k] = curr_state[k]
+        
+        model.load_state_dict(state_dict)
+    
     return model
 
 
-def build_resnet50(num_classes: int, in_channels: int) -> ResNet:
+def build_resnet18(num_classes: int, in_channels: int, pretrained: bool = True) -> ResNet:
     """
     Build ResNet18 model
 
@@ -93,5 +107,18 @@ def build_resnet50(num_classes: int, in_channels: int) -> ResNet:
         in_channels=in_channels,
         num_classes=num_classes
     )
+     
+    if pretrained:
+        loaded_state = ResNet18_Weights.DEFAULT.get_state_dict(progress=True, check_hash=True)
+        curr_state = model.state_dict()
+        
+        state_dict = {}
+        for k in loaded_state.keys():
+            if 'fc' not in k.split('.'):
+                state_dict[k] = loaded_state[k]
+            else:
+                state_dict[k] = curr_state[k]
+        
+        model.load_state_dict(state_dict)
     
     return model

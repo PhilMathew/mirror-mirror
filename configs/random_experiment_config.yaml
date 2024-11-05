@@ -18,7 +18,7 @@ dataset_params:
     - 300
     - 600
     - 3000
-    - 6000 # Only used for random forget sets
+    - 6000
     - 15000
 distinguisher_params:
   mia:
@@ -26,6 +26,10 @@ distinguisher_params:
   kld: 
     perturbation_type: gaussian
   mse: null
+  consistency:
+    perturbation_type: gaussian
+  randomness:
+    perturbation_type: gaussian
 unlearning_methods:
   ssd:
     dampening_constant: 1
@@ -34,6 +38,6 @@ unlearning_methods:
   amnesiac: null
 batch_size: 256
 train_params:
-  num_epochs: 200
-  learning_rate: 0.1
-runs_per_forget_set: 1
+  num_epochs: 50
+  learning_rate: 0.001
+runs_per_forget_set: 10

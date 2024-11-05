@@ -17,10 +17,11 @@ import plotly.express as px
 import numpy as np
 
 from components.datasets import init_full_ds
-from components.resnet import ResNet, build_resnet50
+from components.resnet import build_resnet18
 from distinguishers.logreg_mia import run_logreg_mia
-from distinguishers.random_perturbation_kld import compute_kld_over_perturbations
+from distinguishers.random_perturbation_kld import compute_kld_over_perturbations, compute_svm_consistency
 from distinguishers.mse_score import calc_mse_score
+from distinguishers.randomness_score import compute_model_randomness
 from unlearning_frameworks.unlearning_methods import *
 from utils.plot_utils import plot_confmat, plot_history
 from utils.train_utils import test_model, train_model
@@ -133,7 +134,7 @@ def train_single_model(
     model_name: str,
     output_dir: Path,
 ) -> nn.Module:
-    model =  build_resnet50(num_classes, in_channels)
+    model = build_resnet18(num_classes, in_channels, pretrained=True)
     print(f'Training {model_name} model')
     train_hist = train_model(
         model=model,
@@ -201,7 +202,7 @@ def run_unlearning(
                 forget_class=forget_ds[0][-1]
             )
         case 'bad_teacher':
-            unlearning_teacher = build_resnet50(num_classes, in_channels).to(device)
+            unlearning_teacher = build_resnet18(num_classes, in_channels).to(device)
             unlearned_model = run_bad_teacher(
                 model=original_model,
                 unlearning_teacher=unlearning_teacher,
@@ -269,10 +270,44 @@ def compute_distinguisher_score(
                 device=device,
                 batch_size=batch_size
             )
+        case 'consistency':
+            match distinguisher_params['perturbation_type']:
+                case 'gaussian':
+                    perturbation_fn = lambda x: x + torch.normal(0, 0.1, x.shape)
+                case 'no_perturbation':
+                    perturbation_fn = lambda x: x
+                case _:
+                    raise ValueError(f'"{distinguisher_params["perturbation_type"]}" is an unknown type of image perturbation')
+            distinguisher_score = compute_svm_consistency(
+                candidate_model=candidate_model, 
+                original_model=original_model,
+                dataset=forget_ds,
+                perturbation_fn=perturbation_fn,
+                seed=0,
+                device=device,
+                batch_size=batch_size
+            )
         case 'mse':
             distinguisher_score = calc_mse_score(
                 candidate_model=candidate_model,
                 original_model=original_model
+            )
+        case 'randomness':
+            match distinguisher_params['perturbation_type']:
+                case 'gaussian':
+                    perturbation_fn = lambda x: x + torch.normal(0, 0.1, x.shape)
+                case 'no_perturbation':
+                    perturbation_fn = lambda x: x
+                case _:
+                    raise ValueError(f'"{distinguisher_params["perturbation_type"]}" is an unknown type of image perturbation')
+            distinguisher_score = compute_model_randomness(
+                candidate_model=candidate_model, 
+                original_model=original_model,
+                dataset=forget_ds,
+                perturbation_fn=perturbation_fn,
+                seed=0,
+                device=device,
+                batch_size=batch_size
             )
         case _:
             raise ValueError(f'"{distinguisher}" is an unknown type of distinguisher')
@@ -285,6 +320,7 @@ def main():
     parser.add_argument('-c', '--config_path', help='/path/to/experiment/config.yaml') # TODO: Make an example YAML
     parser.add_argument('-o', '--output_dir', default='.', help='/path/to/output/directory')
     parser.add_argument('--use_existing_models', action='store_true', help='Uses trained models from a previous experiment')
+    parser.add_argument('--redo_unlearning', action='store_true', help='Re-runs the unlearning methods only')
     args = parser.parse_args()
     
     # Load in the config
@@ -312,7 +348,7 @@ def main():
     
     original_state_dict_path = output_dir / 'original' / 'original_state_dict.pt'
     if args.use_existing_models:
-        original_model = build_resnet50(num_classes, in_channels)
+        original_model = build_resnet18(num_classes, in_channels)
         original_model.load_state_dict(torch.load(str(original_state_dict_path)))
         original_model = original_model.to(device)
         print(f'Using pre-trained original model from {original_state_dict_path}')
@@ -369,7 +405,7 @@ def main():
             
             # Train the control model
             if args.use_existing_models and (curr_output_dir / 'control' / 'control_state_dict.pt').exists():
-                control_model = build_resnet50(num_classes, in_channels)
+                control_model = build_resnet18(num_classes, in_channels)
                 control_model.load_state_dict(torch.load(str(curr_output_dir / 'control' / 'control_state_dict.pt')))
                 control_model = control_model.to(device)
             else:
@@ -388,9 +424,10 @@ def main():
             models_to_score = {'control': control_model.cpu()}
             # Get unlearned models for each unlearning method
             for unlearning_method, unlearning_params in unlearning_methods.items():
-                if args.use_existing_models and (curr_output_dir / unlearning_method / f'{unlearning_method}_state_dict.pt').exists():
-                    unlearned_model = build_resnet50(num_classes, in_channels)
-                    unlearned_model.load_state_dict(torch.load(str(curr_output_dir / unlearning_method / f'{unlearning_method}_state_dict.pt')))
+                unlearned_model_ckpt = curr_output_dir / unlearning_method / f'{unlearning_method}_state_dict.pt'
+                if not args.redo_unlearning and args.use_existing_models and unlearned_model_ckpt.exists():
+                    unlearned_model = build_resnet18(num_classes, in_channels)
+                    unlearned_model.load_state_dict(torch.load(str(unlearned_model_ckpt)))
                     unlearned_model.to(device)
                 else:
                     if unlearning_method == 'sanity_check':
@@ -422,7 +459,10 @@ def main():
                             device=device,
                             output_dir=curr_output_dir
                         )
+                
+                # Load the model onto CPU
                 models_to_score[unlearning_method] = unlearned_model.cpu()
+                
                 # We have to reload the original model the unlearning methods appear to act in place
                 original_model.load_state_dict(torch.load(str(original_state_dict_path)))
             
@@ -448,10 +488,10 @@ def main():
                     score_dicts[distinguisher]['model'].append(model_name)
                     score_dicts[distinguisher]['score'].append(score)
     
-    # Save the resulting scores from each distinguisher into a separate CSV
-    for distinguisher, score_dict in score_dicts.items():
-        score_df = pd.DataFrame(score_dict)
-        score_df.to_csv(str(output_dir / f'{distinguisher}_results.csv'), index=False)
+        # Save the resulting scores from each distinguisher into a separate CSV
+        for distinguisher, score_dict in score_dicts.items():
+            score_df = pd.DataFrame(score_dict)
+            score_df.to_csv(str(output_dir / f'{distinguisher}_results.csv'), index=False)
 
 
 if __name__ == "__main__":

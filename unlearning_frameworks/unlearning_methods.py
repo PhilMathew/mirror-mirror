@@ -103,7 +103,7 @@ def unlearning_step(
         )
         loss.backward()
         optimizer.step()
-        losses.append(loss.detach().cpu().numpy())
+        losses.append(loss.item())
     return np.mean(losses)
 
 
@@ -156,9 +156,9 @@ def blindspot_unlearner(
 
     for epoch in range(epochs):
         loss = unlearning_step(
-            model=model,
-            unlearning_teacher=unlearning_teacher,
-            full_trained_teacher=full_trained_teacher,
+            model=model.to(device),
+            unlearning_teacher=unlearning_teacher.to(device),
+            full_trained_teacher=full_trained_teacher.to(device),
             unlearn_data_loader=unlearning_loader,
             optimizer=optimizer,
             device=device,
@@ -210,6 +210,9 @@ def run_amnesiac(
     forget_class,
     device
 ):
+    model = deepcopy(model)
+    model = model.to(device)
+    
     unlearning_labels = list(range(num_classes))
     unlearning_trainset = []
 
@@ -238,6 +241,7 @@ def run_fisher_forgetting(
     num_classes,
     device
 ):
+    model = deepcopy(model)
     model = model.to(device)
     def hessian(dataset, model):
         model.eval()
@@ -343,12 +347,13 @@ def run_ssd(
         "dampening_constant": dampening_constant,  # Lambda from paper
         "selection_weighting": selection_weighting,  # Alpha from paper
     }
-
+    model = deepcopy(model)
+    
     # load the trained model
     optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
 
     pdr = ssd.ParameterPerturber(model, optimizer, device, parameters)
-
+    
     model = model.to(device)
     model = model.eval()
 
