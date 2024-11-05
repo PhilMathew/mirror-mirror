@@ -111,9 +111,6 @@ def build_resnet18(num_classes: int, in_channels: int, pretrained: bool = True, 
         norm_layer=nn.BatchNorm2d
     )
     
-    if use_differential_privacy:
-        model = ModuleValidator.fix(model)
-    
     if pretrained:
         loaded_state = ResNet18_Weights.DEFAULT.get_state_dict(progress=True, check_hash=True)
         curr_state = model.state_dict()
@@ -126,5 +123,8 @@ def build_resnet18(num_classes: int, in_channels: int, pretrained: bool = True, 
                 state_dict[k] = curr_state[k]
         
         model.load_state_dict(state_dict)
+    
+    if use_differential_privacy:
+        model = ModuleValidator.fix(model)
     
     return model
