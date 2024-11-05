@@ -135,9 +135,14 @@ def train_single_model(
     model_name: str,
     output_dir: Path,
     norm_layer: str = 'batch',
-    use_differential_privacy: bool=False,
+    use_differential_privacy: bool = False,
 ) -> nn.Module:
-    model = build_resnet18(num_classes, in_channels, pretrained=True, norm_layer=norm_layer)
+    model = build_resnet18(
+        num_classes, 
+        in_channels, 
+        pretrained=(not use_differential_privacy), 
+        norm_layer=norm_layer
+    )
     print(f'Training {model_name} model')
     train_hist = train_model(
         model=model,
@@ -215,12 +220,14 @@ def run_unlearning(
                 device=device
             )
         case 'dp_sgd':
-            unlearned_model = run_dp_sgd(model=original_model,
-                forget_ds=forget_ds,
-                full_train_ds = full_train_ds,
-                device=device,
-                **unlearning_params
-            )
+            # Unlearning for DP-SGD is a no-op
+            unlearned_model = build_resnet18(
+                num_classes, 
+                in_channels, 
+                pretrained=False, 
+                norm_layer=unlearning_params['norm_layer']
+            ).to(device)
+            unlearned_model.load_state_dict(original_model.state_dict())
         case _:
             raise ValueError(f'"{unlearning_method}" is an unknown unlearning method')
         
@@ -434,6 +441,9 @@ def main():
             models_to_score = {'control': control_model.cpu()}
             # Get unlearned models for each unlearning method
             for unlearning_method, unlearning_params in unlearning_methods.items():
+                if unlearning_method == 'dp_sgd': # extra book-keeping for DP-SGD
+                    unlearning_params['norm_layer'] = train_params['norm_layer']
+                
                 unlearned_model_ckpt = curr_output_dir / unlearning_method / f'{unlearning_method}_state_dict.pt'
                 if not args.redo_unlearning and args.use_existing_models and unlearned_model_ckpt.exists():
                     unlearned_model = build_resnet18(num_classes, in_channels, norm_layer=train_params['norm_layer'])
