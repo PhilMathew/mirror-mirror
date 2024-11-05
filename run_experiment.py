@@ -161,7 +161,7 @@ def train_single_model(
             **kwargs
         )
     else:
-        if use_differential_privacy == True: 
+        if use_differential_privacy: 
             # allows us to specify a nice learning rate for the control 
             # or other models but maintain good performance for DP-SGD
             print('Setting initial learning rate to 0.1 for DP-SGD (works best in practice)')

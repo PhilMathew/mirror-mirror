@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader, Dataset
 import numpy as np
 from tqdm import tqdm
 from opacus import PrivacyEngine
+from opacus.utils.batch_memory_manager import BatchMemoryManager
 
 
 
@@ -28,6 +29,53 @@ class WarmUpLR(torch.optim.lr_scheduler._LRScheduler):
             base_lr * self.last_epoch / (self.total_iters + 1e-8)
             for base_lr in self.base_lrs
         ]
+
+
+def _train_step(
+    model: nn.Module,
+    train_dl: DataLoader,
+    optimizer: torch.optim.Optimizer,
+    loss_fn: nn.Module,
+    device: torch.device,
+    use_differential_privacy: bool,
+    history: Dict[str, List[float]],
+    epoch: int,
+    privacy_engine: Optional[PrivacyEngine] = None,
+    target_delta: Optional[float] = None,
+):
+    p_bar = tqdm(train_dl, desc=f'Epoch {epoch}')
+    train_loss, train_acc = 0, 0
+    model.train() # in case an eval loop set it to evaluation
+        
+    for i, batch in enumerate(p_bar):
+        optimizer.zero_grad()
+        
+        # Sorting out data
+        inputs, labels = batch
+        inputs, labels = inputs.to(device), labels.to(device) 
+        
+        # Run examples through model
+        preds = model(inputs)
+        
+        # Backprop
+        loss = loss_fn(preds, labels)
+        loss.backward()
+        optimizer.step()
+        
+        # Metrics calculation
+        train_loss += loss.item()
+        train_acc += (torch.sum(F.softmax(preds, dim=-1).argmax(dim=-1) == labels) / labels.shape[0]).item()
+        
+        if use_differential_privacy:
+            postfix_str = f'Train Loss: {train_loss / (i + 1):.4f}, Train Accuracy: {100 * train_acc / (i + 1):.4f}%, epsilon: {privacy_engine.get_epsilon(target_delta):.4f}, delta: {target_delta:.4f}'
+        else:
+            postfix_str = f'Train Loss: {train_loss / (i + 1):.4f}, Train Accuracy: {100 * train_acc / (i + 1):.4f}%'
+        
+        p_bar.set_postfix_str(postfix_str)
+        p_bar.update()
+    
+    history['train_loss'].append(train_loss / (len(train_dl)))
+    history['train_acc'].append(train_acc / (len(train_dl)))
 
 
 def train_model(
@@ -100,42 +148,35 @@ def train_model(
             max_grad_norm=1.2
         )
         print(f'Using sigma = {optimizer.noise_multiplier}')
-    
+        
     history = {k: [] for k in ('train_loss', 'train_acc', 'val_loss', 'val_acc')}
     for epoch in range(1, num_epochs + 1):
-        p_bar = tqdm(train_dl, desc=f'Epoch {epoch}')
-        train_loss, train_acc = 0, 0
-        model.train() # in case an eval loop set it to evaluation
-        
-        for i, batch in enumerate(p_bar):
-            optimizer.zero_grad()
-            
-            # Sorting out data
-            inputs, labels = batch
-            inputs, labels = inputs.to(device), labels.to(device) 
-            
-            # Run examples through model
-            preds = model(inputs)
-            
-            # Backprop
-            loss = loss_fn(preds, labels)
-            loss.backward()
-            optimizer.step()
-            
-            # Metrics calculation
-            train_loss += loss.item()
-            train_acc += (torch.sum(F.softmax(preds, dim=-1).argmax(dim=-1) == labels) / labels.shape[0]).item()
-            
-            if use_differential_privacy:
-                postfix_str = f'Train Loss: {train_loss / (i + 1):.4f}, Train Accuracy: {100 * train_acc / (i + 1):.4f}%, epsilon: {privacy_engine.get_epsilon(target_delta):.4f}, delta: {target_delta:.4f}'
-            else:
-                postfix_str = f'Train Loss: {train_loss / (i + 1):.4f}, Train Accuracy: {100 * train_acc / (i + 1):.4f}%'
-            
-            p_bar.set_postfix_str(postfix_str)
-            p_bar.update()
-            
-        history['train_loss'].append(train_loss / (len(train_dl)))
-        history['train_acc'].append(train_acc / (len(train_dl)))
+
+        if use_differential_privacy:
+            with BatchMemoryManager(data_loader=train_dl, max_physical_batch_size=256, optimizer=optimizer) as train_dl:
+                _train_step(
+                    model=model,
+                    train_dl=train_dl,
+                    optimizer=optimizer,
+                    loss_fn=loss_fn,
+                    device=device,
+                    use_differential_privacy=use_differential_privacy,
+                    history=history,
+                    epoch=epoch,
+                    privacy_engine=privacy_engine,
+                    target_delta=target_delta
+                )
+        else:
+            _train_step(
+                model=model,
+                train_dl=train_dl,
+                optimizer=optimizer,
+                loss_fn=loss_fn,
+                device=device,
+                use_differential_privacy=use_differential_privacy,
+                history=history,
+                epoch=epoch,
+            )
         
         if val_ds is not None:
             val_loss, val_acc = test_model(
