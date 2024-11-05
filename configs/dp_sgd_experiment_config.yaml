@@ -28,9 +28,8 @@ unlearning_methods:
   dp_sgd: null
 batch_size: 256
 train_params:
-  num_epochs: 200
+  num_epochs: 40
   learning_rate: 0.1
-  norm_layer: norm
   use_differential_privacy: True
   lambda: 4
 runs_per_forget_set: 1

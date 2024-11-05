@@ -1,3 +1,4 @@
+from opacus.validators import ModuleValidator
 import torch
 import torchvision
 from torch import nn
@@ -90,7 +91,7 @@ def build_resnet50(num_classes: int, in_channels: int, pretrained: bool = True) 
     return model
 
 
-def build_resnet18(num_classes: int, in_channels: int, pretrained: bool = True, norm_layer: str = 'batch') -> ResNet:
+def build_resnet18(num_classes: int, in_channels: int, pretrained: bool = True, use_differential_privacy: bool = False) -> ResNet:
     """
     Build ResNet18 model
 
@@ -102,18 +103,17 @@ def build_resnet18(num_classes: int, in_channels: int, pretrained: bool = True, 
     :rtype: ResNet
     """
     
-    if norm_layer != 'batch':
-        norm_layer = nn.InstanceNorm2d
-    else:
-        norm_layer = nn.BatchNorm2d
     model = ResNet(
         block=BasicBlock, 
         layers=[2, 2, 2, 2],
         in_channels=in_channels,
         num_classes=num_classes,
-        norm_layer=norm_layer
+        norm_layer=nn.BatchNorm2d
     )
-     
+    
+    if use_differential_privacy:
+        model = ModuleValidator.fix(model)
+    
     if pretrained:
         loaded_state = ResNet18_Weights.DEFAULT.get_state_dict(progress=True, check_hash=True)
         curr_state = model.state_dict()

@@ -76,7 +76,8 @@ def train_model(
     
     # Optimizer, loss function, and LR scheduler
     optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=5e-4)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=200)
+    # optimizer = torch.optim.RMSprop(model.parameters(), lr=lr)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs)
     loss_fn = nn.CrossEntropyLoss()
     if use_differential_privacy:
         assert 'lambda' in kwargs.keys(), "Delta must be specified for DP-SGD"
@@ -93,8 +94,9 @@ def train_model(
             target_delta=target_delta,
             target_epsilon=target_epsilon,
             epochs=num_epochs,
-            max_grad_norm=1.0
+            max_grad_norm=1.2
         )
+        print(f'Using sigma = {optimizer.noise_multiplier}')
     
     history = {k: [] for k in ('train_loss', 'train_acc', 'val_loss', 'val_acc')}
     for epoch in range(1, num_epochs + 1):
@@ -121,9 +123,12 @@ def train_model(
             train_loss += loss.item()
             train_acc += (torch.sum(F.softmax(preds, dim=-1).argmax(dim=-1) == labels) / labels.shape[0]).item()
             
-            p_bar.set_postfix_str(
-                f'Train Loss: {train_loss / (i + 1):.4f}, Train Accuracy: {100 * train_acc / (i + 1):.4f}%'
-            )
+            if use_differential_privacy:
+                postfix_str = f'Train Loss: {train_loss / (i + 1):.4f}, Train Accuracy: {100 * train_acc / (i + 1):.4f}%, epsilon: {privacy_engine.get_epsilon(target_delta):.4f}, delta: {target_delta:.4f}'
+            else:
+                postfix_str = f'Train Loss: {train_loss / (i + 1):.4f}, Train Accuracy: {100 * train_acc / (i + 1):.4f}%'
+            
+            p_bar.set_postfix_str(postfix_str)
             p_bar.update()
             
         history['train_loss'].append(train_loss / (len(train_dl)))

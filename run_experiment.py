@@ -15,6 +15,7 @@ from torchvision.models.resnet import Bottleneck
 from tqdm import tqdm
 import plotly.express as px
 import numpy as np
+import copy
 
 from components.datasets import init_full_ds
 from components.resnet import build_resnet18
@@ -25,7 +26,7 @@ from distinguishers.randomness_score import compute_model_randomness
 from unlearning_frameworks.unlearning_methods import *
 from utils.plot_utils import plot_confmat, plot_history
 from utils.train_utils import test_model, train_model
-import copy
+
 
 
 CONFIG_PATH = Path('experiment_config.yaml')
@@ -134,7 +135,6 @@ def train_single_model(
     device: torch.device,
     model_name: str,
     output_dir: Path,
-    norm_layer: str = 'batch',
     use_differential_privacy: bool = False,
     **kwargs
 ) -> nn.Module:
@@ -142,8 +142,9 @@ def train_single_model(
         num_classes, 
         in_channels, 
         pretrained=(not use_differential_privacy), 
-        norm_layer=norm_layer
+        use_differential_privacy=use_differential_privacy
     )
+    
     print(f'Training {model_name} model')
     train_hist = train_model(
         model=model,
@@ -226,8 +227,8 @@ def run_unlearning(
             unlearned_model = build_resnet18(
                 num_classes, 
                 in_channels, 
-                pretrained=False, 
-                norm_layer=unlearning_params['norm_layer']
+                pretrained=False,
+                use_differential_privacy=True
             ).to(device)
             unlearned_model.load_state_dict(original_model.state_dict())
         case _:
@@ -367,7 +368,11 @@ def main():
     full_train_ds_random_aug, _, _, _ = init_full_ds(dataset_params['dataset_name'], use_random_train_aug=True)
     original_state_dict_path = output_dir / 'original' / 'original_state_dict.pt'
     if args.use_existing_models:
-        original_model = build_resnet18(num_classes, in_channels, norm_layer=train_params['norm_layer'])
+        original_model = build_resnet18(
+            num_classes, 
+            in_channels,
+            use_differential_privacy=train_params['use_differential_privacy']
+        )
         original_model.load_state_dict(torch.load(str(original_state_dict_path)))
         original_model = original_model.to(device)
         print(f'Using pre-trained original model from {original_state_dict_path}')
@@ -424,7 +429,11 @@ def main():
             
             # Train the control model
             if args.use_existing_models and (curr_output_dir / 'control' / 'control_state_dict.pt').exists():
-                control_model = build_resnet18(num_classes, in_channels, norm_layer=train_params['norm_layer'])
+                control_model = build_resnet18(
+                    num_classes, 
+                    in_channels,
+                    use_differential_privacy=train_params['use_differential_privacy']
+                )
                 control_model.load_state_dict(torch.load(str(curr_output_dir / 'control' / 'control_state_dict.pt')))
                 control_model = control_model.to(device)
             else:
@@ -443,12 +452,13 @@ def main():
             models_to_score = {'control': control_model.cpu()}
             # Get unlearned models for each unlearning method
             for unlearning_method, unlearning_params in unlearning_methods.items():
-                if unlearning_method == 'dp_sgd': # extra book-keeping for DP-SGD
-                    unlearning_params['norm_layer'] = train_params['norm_layer']
-                
                 unlearned_model_ckpt = curr_output_dir / unlearning_method / f'{unlearning_method}_state_dict.pt'
                 if not args.redo_unlearning and args.use_existing_models and unlearned_model_ckpt.exists():
-                    unlearned_model = build_resnet18(num_classes, in_channels, norm_layer=train_params['norm_layer'])
+                    unlearned_model = build_resnet18(
+                        num_classes, 
+                        in_channels,
+                        use_differential_privacy=train_params['use_differential_privacy']
+                    )
                     unlearned_model.load_state_dict(torch.load(str(unlearned_model_ckpt)))
                     unlearned_model.to(device)
                 else:
