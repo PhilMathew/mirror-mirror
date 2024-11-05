@@ -76,7 +76,6 @@ def train_model(
     
     # Optimizer, loss function, and LR scheduler
     optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=5e-4)
-    # optimizer = torch.optim.RMSprop(model.parameters(), lr=lr)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs)
     loss_fn = nn.CrossEntropyLoss()
     if use_differential_privacy:

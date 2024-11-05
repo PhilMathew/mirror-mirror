@@ -141,21 +141,42 @@ def train_single_model(
     model = build_resnet18(
         num_classes, 
         in_channels, 
-        pretrained=(not use_differential_privacy), 
+        pretrained=True, 
         use_differential_privacy=use_differential_privacy
     )
     
     print(f'Training {model_name} model')
-    train_hist = train_model(
-        model=model,
-        train_ds=train_ds,
-        device=device,
-        batch_size=batch_size,
-        num_epochs=num_epochs,
-        lr=learning_rate,
-        use_differential_privacy=use_differential_privacy,
-        **kwargs
-    )
+    if model_name == 'control':
+        # We do a little extra book-keeping for the control model, 
+        # since it never needs to be trained with DP-SGD (the forget set
+        # is guaranteed to not be known by default).            
+        train_hist = train_model(
+            model=model,
+            train_ds=train_ds,
+            device=device,
+            batch_size=batch_size,
+            num_epochs=num_epochs,
+            lr=learning_rate,
+            use_differential_privacy=False,
+            **kwargs
+        )
+    else:
+        if use_differential_privacy == True: 
+            # allows us to specify a nice learning rate for the control 
+            # or other models but maintain good performance for DP-SGD
+            print('Setting initial learning rate to 0.1 for DP-SGD (works best in practice)')
+            learning_rate = 0.1
+        
+        train_hist = train_model(
+            model=model,
+            train_ds=train_ds,
+            device=device,
+            batch_size=batch_size,
+            num_epochs=num_epochs,
+            lr=learning_rate,
+            use_differential_privacy=use_differential_privacy,
+            **kwargs
+        ) 
     
     # Save out training history and model state dict
     model_dir = output_dir / model_name
@@ -173,6 +194,7 @@ def train_single_model(
 
 
 def run_unlearning(
+    
     unlearning_method: str,
     unlearning_params: dict,
     original_model: nn.Module,
