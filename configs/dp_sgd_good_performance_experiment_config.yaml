@@ -1,0 +1,36 @@
+dataset_params:
+  dataset_name: CIFAR10
+  forget_sets:
+    - 'random'
+    - 'random'
+    - 'random'
+    - 'random'
+    - 'random'
+    - 'random'
+    - 'random'
+    - 'random'
+    - 'random'
+  forget_set_size: 
+    - 3
+    - 6
+    - 30
+    - 60
+    - 300
+    - 600
+    - 3000
+    - 6000
+    - 15000
+distinguisher_params:
+  mia:
+    mia_type: logreg
+  mse: null
+unlearning_methods:
+  dp_sgd: null
+batch_size: 256
+train_params:
+  num_epochs: 40
+  learning_rate: 0.1
+  use_differential_privacy: True
+  epsilon: 50
+  delta: 1e-5
+runs_per_forget_set: 1

@@ -80,11 +80,15 @@ def train_model(
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs)
     loss_fn = nn.CrossEntropyLoss()
     if use_differential_privacy:
-        assert 'lambda' in kwargs.keys(), "Delta must be specified for DP-SGD"
-        
-        # Based on theoretical values in paper
-        target_delta = 2**(-kwargs['lambda']) # just needs to be negligible in lambda
-        target_epsilon = np.log(1 + target_delta)
+        if 'epsilon' in kwargs and 'delta' in kwargs:
+            target_delta = kwargs['delta']
+            target_epsilon = kwargs['epsilon']
+        else:
+            assert 'lambda' in kwargs.keys(), "Either just lambda or both epsilon and delta must be specified for DP-SGD"
+            
+            # Based on theoretical values in paper
+            target_delta = 2**(-kwargs['lambda']) # just needs to be negligible in lambda
+            target_epsilon = np.log(1 + target_delta)
         
         privacy_engine = PrivacyEngine()
         model, optimizer, train_dl = privacy_engine.make_private_with_epsilon(
@@ -109,7 +113,7 @@ def train_model(
             
             # Sorting out data
             inputs, labels = batch
-            inputs, labels = inputs.to(device), labels.to(device)
+            inputs, labels = inputs.to(device), labels.to(device) 
             
             # Run examples through model
             preds = model(inputs)
