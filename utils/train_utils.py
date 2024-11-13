@@ -67,7 +67,11 @@ def _train_step(
         train_acc += (torch.sum(F.softmax(preds, dim=-1).argmax(dim=-1) == labels) / labels.shape[0]).item()
         
         if use_differential_privacy:
-            postfix_str = f'Train Loss: {train_loss / (i + 1):.4f}, Train Accuracy: {100 * train_acc / (i + 1):.4f}%, epsilon: {privacy_engine.get_epsilon(target_delta):.4f}, delta: {target_delta:.4f}'
+            try:
+                epsilon = privacy_engine.get_epsilon(target_delta)
+            except ValueError as e:
+                epsilon = np.nan
+            postfix_str = f'Train Loss: {train_loss / (i + 1):.4f}, Train Accuracy: {100 * train_acc / (i + 1):.4f}%, epsilon: {epsilon:.4f}, delta: {target_delta:.4f}'
         else:
             postfix_str = f'Train Loss: {train_loss / (i + 1):.4f}, Train Accuracy: {100 * train_acc / (i + 1):.4f}%'
         
@@ -148,12 +152,12 @@ def train_model(
             max_grad_norm=1.2
         )
         print(f'Using sigma = {optimizer.noise_multiplier}')
-        
+    
     history = {k: [] for k in ('train_loss', 'train_acc', 'val_loss', 'val_acc')}
     for epoch in range(1, num_epochs + 1):
 
         if use_differential_privacy:
-            with BatchMemoryManager(data_loader=train_dl, max_physical_batch_size=256, optimizer=optimizer) as train_dl:
+            with BatchMemoryManager(data_loader=train_dl, max_physical_batch_size=128, optimizer=optimizer) as train_dl:
                 _train_step(
                     model=model,
                     train_dl=train_dl,
