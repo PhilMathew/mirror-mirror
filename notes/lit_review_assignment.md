@@ -84,6 +84,14 @@ WAGLE: Strategic Weight Attribution for Effective and Modular Unlearning in Larg
 - In practice, we minimize the KL divergence between the predicted distribution for each token and a uniform distribution with vocabulary size.
 - ***Brennon:*** appears to argue "LLMs too expensive to evaluate against a control, so why bother? `#yolo`" Weird.
 
+Still To assess:
+- [Approximate Data Deletion from Machine Learning Models: Algorithms and Evaluations](https://www.semanticscholar.org/paper/Approximate-Data-Deletion-from-Machine-Learning-and-Izzo-Smart/303fbc9cac7f963f4334510682a300eb5e37977f)
+- [Towards Probabilistic Verification of Machine Unlearning](https://www.semanticscholar.org/paper/Towards-Probabilistic-Verification-of-Machine-Sommer-Song/0f68573a482a2b75b5db5306b8cb61529c866566)
+- [Near-Optimal Model Discrimination with Non-Disclosure](https://www.semanticscholar.org/paper/Near-Optimal-Model-Discrimination-with-Ostrovskii-Ndaoud/e77a10fe1a56893ddbb73c6ced87aa06e7a0bd06)
+- [Bayesian Inference Forgetting](https://www.semanticscholar.org/paper/Bayesian-Inference-Forgetting-Fu-He/26116cb420b8c690b2d0465c3cf37c75c0321151)
+- [Machine Unlearning via Algorithmic Stability](https://www.semanticscholar.org/paper/Machine-Unlearning-via-Algorithmic-Stability-Ullah-Mai/0fa360d5bb8ce649155c6816fd19e5bffac4e07c)
+
+
 
 ## Neil
 Simplicity Prevails: Rethinking Negative Preference Optimization for LLM Unlearning

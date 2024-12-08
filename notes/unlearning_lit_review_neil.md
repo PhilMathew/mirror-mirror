@@ -48,3 +48,39 @@ https://github.com/chrisliu298/awesome-llm-unlearning
 #  Cross-model Control: Improving Multiple Large Language Models in One-time Training
 - Trains multiple LLMs at once
 - Might be relevant for future emperical work
+
+# Simplicity Prevails: Rethinking Negative Preference Optimization for LLM Unlearning
+- Heuristic Approach
+- Uses Negative Preference Optimization
+
+# Dissecting Fine-Tuning Unlearning in Large Language Models
+- Evaluation of the shortcomings of finetuning (heuristic) based approaches to unlearning
+- Shows that this alters model retrieval process but does not remove knowledge
+
+# NegMerge: Consensual Weight Negation for Strong Machine Unlearning
+- Run multiple task vectors
+- merge the consistenct components of multiple task vectors
+- Use this for task vector based machine unlearning
+
+# A Probabilistic Perspective on Unlearning and Alignment for Large Language Models
+- Determinstic evaluations of unlearning fail
+- novel metric with "high probability" guarantees concerning model output
+- WOrth a deeper look
+- Has multiple definitions of "leaking" information that are interesting
+
+# Mitigating Memorization In Language Models
+- Three heuristic ways to decrease memorization
+
+# Answer When Needed, Forget When Not: Language Models Pretend to Forget via In-Context Knowledge Unlearning
+- Shows that LLMs often contain information but choose to not act on it
+- Deliberately finetune a model to do this
+- Heuristic based unlearning
+
+# An Adversarial Perspective on Machine Unlearning for AI Safety
+- Can use jailbreaking techniques to break unlearning
+- Neil note: Does cash's critique apply?
+
+# Alternate Preference Optimization for Unlearning Factual Knowledge in Large Language Models
+ - Heuristic based 
+
+# LLM Surgery: Efficient Knowledge Unlearning and Editing in Large Language Models
