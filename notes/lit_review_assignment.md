@@ -84,14 +84,33 @@ WAGLE: Strategic Weight Attribution for Effective and Modular Unlearning in Larg
 - In practice, we minimize the KL divergence between the predicted distribution for each token and a uniform distribution with vocabulary size.
 - ***Brennon:*** appears to argue "LLMs too expensive to evaluate against a control, so why bother? `#yolo`" Weird.
 
-Still To assess:
-- [Approximate Data Deletion from Machine Learning Models: Algorithms and Evaluations](https://www.semanticscholar.org/paper/Approximate-Data-Deletion-from-Machine-Learning-and-Izzo-Smart/303fbc9cac7f963f4334510682a300eb5e37977f)
-- [Towards Probabilistic Verification of Machine Unlearning](https://www.semanticscholar.org/paper/Towards-Probabilistic-Verification-of-Machine-Sommer-Song/0f68573a482a2b75b5db5306b8cb61529c866566)
-- [Near-Optimal Model Discrimination with Non-Disclosure](https://www.semanticscholar.org/paper/Near-Optimal-Model-Discrimination-with-Ostrovskii-Ndaoud/e77a10fe1a56893ddbb73c6ced87aa06e7a0bd06)
-- [Bayesian Inference Forgetting](https://www.semanticscholar.org/paper/Bayesian-Inference-Forgetting-Fu-He/26116cb420b8c690b2d0465c3cf37c75c0321151)
-- [Machine Unlearning via Algorithmic Stability](https://www.semanticscholar.org/paper/Machine-Unlearning-via-Algorithmic-Stability-Ullah-Mai/0fa360d5bb8ce649155c6816fd19e5bffac4e07c)
+## [Approximate Data Deletion from Machine Learning Models: Algorithms and Evaluations](https://arxiv.org/pdf/2002.10077)
+- Existing approaches to approximate deletion include the use of influence functions (Koh and Liang, 2017) and Newton’s method. Both of these methods have computational costs which scale as $Ω(d^2)$, where $d$ is the dimensionality of the data.
+- We introduce a novel approximate data deletion method, the projective residual update (PRU), which has a time complexity that is linear in the dimension of the deleted data and is independent of the size of the dataset.
+- Since the full Hessian can be computed without knowing which points need to be deleted, we can consider it an oﬄine cost. For linear regression, the new Hessian matrix is a rank $k$ update of the full Hessian, which can be computed via the Sherman-Morrison-Woodbury formula in $O(kd^2)$ time. In general, forming and inverting the new Hessian may take up to $O(nd^2)$ time.
+- ***Brennon:*** Also elaborate on the influence function method, which involves a linear approximation.
+- ***Brennon:*** appears to only consider linear and logistic regression (though it uses a gradient-based approach for them.)
+- ***Brennon:*** appears to only consider linear and logistic regression (though it uses a gradient-based approach for them.)
 
+## [Towards Probabilistic Verification of Machine Unlearning](https://arxiv.org/pdf/2003.04247)
+- We propose a novel backdoor-based verification mechanism and demonstrate its effectiveness in certifying data deletion with high confidence, thus providing a basis for quantitatively inferring machine unlearning.
+- We formulate the unlearning verification problem as a hypothesis testing problem.
+- ***Brennon:*** they measure a baseline backdoor success rate and compare it to new samples that meet the backdoor to compute the hypothesis test value. They assume that the backdoor success rate is a useful proxy for unlearning, but this intuition is not rigorously justified.
+- ***Brennon:*** in their discussion section they mention that DP doesn't work because the noise levels have to increase to achieve user-level (versus record-level) privacy.
 
+## [Near-Optimal Model Discrimination with Non-Disclosure](https://arxiv.org/abs/2012.02901)
+- This work identifies the number of queries (samples) on two linear regression models are needed to distinguish them via a statistical hypothesis test. They show that the number of queries to distinguish is less than the number of queries needed to recover the underlying parameters.
+- ***Brennon:*** the contribution appears to be the relationship between query count/sample size and KL-divergence for the classes of models considered. While they reference KL divergence, it is unclear why they do not use this more explicitly (as in our work).
+
+## [Bayesian Inference Forgetting](https://arxiv.org/pdf/2101.06417)
+- Existing works propose to remove the knowledge learned from the requested data via its influence function which is no longer naturally well-defined in Bayesian inference. This paper proposes a Bayesian inference forgetting (BIF) framework to realize the right to be forgotten in Bayesian inference...We show that our algorithms can provably remove the influence of single datums on the learned models.
+- ***Brennon:*** their definition of certified knowledge removal is pretty good – it explicitly compares the KL divergence of a control and unlearned model but lacks description of an adversary
+
+## [Machine Unlearning via Algorithmic Stability](https://arxiv.org/pdf/2102.13179)
+- ***Brennon:*** Enayat Ullah and Raman Arora are from JHU.
+- In this work, we consider a larger class of problems: smooth convex empirical risk minimization (ERM), which includes many machine learning problems, eg: linear and logistic regression, as special cases.
+- We require the following properties to hold: 1) exact unlearning – at every time point in the stream, the output model is indistinguishable from what we would have obtained if trained on the updated dataset (i.e., without the deleted sample or with the inserted sample); 2) the unlearning runtime should be small; 3) the output models should be sufficiently accurate (measured in empirical risk).
+- ***Brennon:*** they appear to do exact unlearning for models like linear and logistic regression, a la the formulas Phil has derived.
 
 ## Neil
 Simplicity Prevails: Rethinking Negative Preference Optimization for LLM Unlearning
