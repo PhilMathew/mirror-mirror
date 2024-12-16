@@ -12,12 +12,12 @@ class ResNet(torchvision.models.ResNet):
     def __init__(
         self, 
         block: type[BasicBlock] | type[Bottleneck], 
-        layers: torch.List[int], 
+        layers: List[int], 
         num_classes: int = 1000, 
         zero_init_residual: bool = False, 
         groups: int = 1, 
         width_per_group: int = 64, 
-        replace_stride_with_dilation: torch.List[bool] | None = None, 
+        replace_stride_with_dilation: List[bool] | None = None, 
         norm_layer: Callable[..., nn.Module] | None = None,
         in_channels: int = 3
     ) -> None:

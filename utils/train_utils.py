@@ -8,6 +8,8 @@ import numpy as np
 from tqdm import tqdm
 from opacus import PrivacyEngine
 from opacus.utils.batch_memory_manager import BatchMemoryManager
+import time
+
 
 
 
@@ -46,7 +48,7 @@ def _train_step(
     p_bar = tqdm(train_dl, desc=f'Epoch {epoch}')
     train_loss, train_acc = 0, 0
     model.train() # in case an eval loop set it to evaluation
-        
+    start_time = time.time()
     for i, batch in enumerate(p_bar):
         optimizer.zero_grad()
         
@@ -65,22 +67,23 @@ def _train_step(
         # Metrics calculation
         train_loss += loss.item()
         train_acc += (torch.sum(F.softmax(preds, dim=-1).argmax(dim=-1) == labels) / labels.shape[0]).item()
-        
-        if use_differential_privacy:
-            try:
-                epsilon = privacy_engine.get_epsilon(target_delta)
-            except ValueError as e:
-                epsilon = np.nan
-            postfix_str = f'Train Loss: {train_loss / (i + 1):.4f}, Train Accuracy: {100 * train_acc / (i + 1):.4f}%, epsilon: {epsilon:.4f}, delta: {target_delta:.4f}'
-        else:
-            postfix_str = f'Train Loss: {train_loss / (i + 1):.4f}, Train Accuracy: {100 * train_acc / (i + 1):.4f}%'
-        
-        p_bar.set_postfix_str(postfix_str)
-        p_bar.update()
-    
+        if (i+1) % 200 == 0:
+            if use_differential_privacy:
+                try:
+                    epsilon = privacy_engine.get_epsilon(target_delta)
+                except ValueError as e:
+                    epsilon = np.nan
+                postfix_str = f'Train Loss: {train_loss / (i + 1):.4f}, Train Time: {time.time() - start_time}, Train Accuracy: {100 * train_acc / (i + 1):.4f}%, epsilon: {epsilon:.4f}, delta: {target_delta:.4f}'
+            else:
+                postfix_str = f'Train Loss: {train_loss / (i + 1):.4f}, Train Accuracy: {100 * train_acc / (i + 1):.4f}%'
+            p_bar.set_postfix_str(postfix_str)
+            p_bar.update()
+
+    postfix_str = f'After Epoch {epoch} Train Loss: {train_loss / (i + 1):.4f}, Train Time: {time.time() - start_time}, Train Accuracy: {100 * train_acc / (i + 1):.4f}%, epsilon: {epsilon:.4f}, delta: {target_delta:.4f}'
+    print(postfix_str)
     history['train_loss'].append(train_loss / (len(train_dl)))
     history['train_acc'].append(train_acc / (len(train_dl)))
-
+    
 
 def train_model(
     model: nn.Module, 
@@ -90,9 +93,10 @@ def train_model(
     batch_size: int = 32, 
     num_epochs: int = 10,
     lr: int = 1e-3,
-    num_workers: int = 16,
+    num_workers: int = 1,
     warmup_epochs: int = 1,
     use_differential_privacy: bool = False,
+    max_physical_batch_size: int = 128,
     **kwargs
 ) -> Dict[str, List[float]]:
     """
@@ -122,7 +126,7 @@ def train_model(
     # Model-related things
     model = model.to(device)
     model.train()
-    
+    print(f"Num Workers: {num_workers}")
     # Data-related stuff
     train_dl = DataLoader(train_ds, batch_size=batch_size, num_workers=num_workers)
     
@@ -151,16 +155,17 @@ def train_model(
             epochs=num_epochs,
             max_grad_norm=1.2
         )
-        print(f'Using sigma = {optimizer.noise_multiplier}')
+        # print(f'Using sigma = {optimizer.noise_multiplier}')
     
     history = {k: [] for k in ('train_loss', 'train_acc', 'val_loss', 'val_acc')}
     for epoch in range(1, num_epochs + 1):
 
         if use_differential_privacy:
-            with BatchMemoryManager(data_loader=train_dl, max_physical_batch_size=128, optimizer=optimizer) as train_dl:
+            print(f"Max Physical Batch Size: {max_physical_batch_size}")
+            with BatchMemoryManager(data_loader=train_dl, max_physical_batch_size=max_physical_batch_size, optimizer=optimizer) as train_dl_mem:
                 _train_step(
                     model=model,
-                    train_dl=train_dl,
+                    train_dl=train_dl_mem,
                     optimizer=optimizer,
                     loss_fn=loss_fn,
                     device=device,
