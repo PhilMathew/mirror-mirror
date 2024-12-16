@@ -8,8 +8,6 @@ import numpy as np
 from tqdm import tqdm
 from opacus import PrivacyEngine
 from opacus.utils.batch_memory_manager import BatchMemoryManager
-import time
-
 
 
 
