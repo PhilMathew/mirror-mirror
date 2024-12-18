@@ -28,7 +28,7 @@ unlearning_methods:
   dp_sgd: null
 batch_size: 128
 train_params:
-  num_epochs: 1
+  num_epochs: 40
   learning_rate: 0.01
   use_differential_privacy: True
   epsilon: 50
