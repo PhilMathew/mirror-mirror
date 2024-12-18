@@ -175,7 +175,6 @@ def train_single_model(
 
 
 def run_unlearning(
-    
     unlearning_method: str,
     unlearning_params: dict,
     original_model: nn.Module,
@@ -187,7 +186,9 @@ def run_unlearning(
     in_channels: int,
     batch_size: int,
     device: torch.device,
-    output_dir: Path
+    output_dir: Path,
+    num_workers: int,
+    **kwargs
 ) -> nn.Module:
     match unlearning_method:
         case 'ssd':
@@ -246,6 +247,7 @@ def run_unlearning(
         device=device,
         batch_size=batch_size,
         model_dir=unlearned_model_dir,
+        num_workers = num_workers,
         p_bar_desc=f'Testing unlearned model ({unlearning_method})'
     )
     
@@ -493,7 +495,8 @@ def main():
                             in_channels=in_channels,
                             batch_size=config_dict['batch_size'],
                             device=device,
-                            output_dir=curr_output_dir
+                            output_dir=curr_output_dir,
+                            **train_params,
                         )
                 
                 # Load the model onto CPU
