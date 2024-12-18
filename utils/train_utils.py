@@ -46,7 +46,6 @@ def _train_step(
     p_bar = tqdm(train_dl, desc=f'Epoch {epoch}')
     train_loss, train_acc = 0, 0
     model.train() # in case an eval loop set it to evaluation
-    start_time = time.time()
     for i, batch in enumerate(p_bar):
         optimizer.zero_grad()
         
@@ -71,13 +70,13 @@ def _train_step(
                     epsilon = privacy_engine.get_epsilon(target_delta)
                 except ValueError as e:
                     epsilon = np.nan
-                postfix_str = f'Train Loss: {train_loss / (i + 1):.4f}, Train Time: {time.time() - start_time}, Train Accuracy: {100 * train_acc / (i + 1):.4f}%, epsilon: {epsilon:.4f}, delta: {target_delta:.4f}'
+                postfix_str = f'Train Loss: {train_loss / (i + 1):.4f}, Train Accuracy: {100 * train_acc / (i + 1):.4f}%, epsilon: {epsilon:.4f}, delta: {target_delta:.4f}'
             else:
                 postfix_str = f'Train Loss: {train_loss / (i + 1):.4f}, Train Accuracy: {100 * train_acc / (i + 1):.4f}%'
             p_bar.set_postfix_str(postfix_str)
             p_bar.update()
 
-    postfix_str = f'After Epoch {epoch} Train Loss: {train_loss / (i + 1):.4f}, Train Time: {time.time() - start_time}, Train Accuracy: {100 * train_acc / (i + 1):.4f}%, epsilon: {epsilon:.4f}, delta: {target_delta:.4f}'
+    postfix_str = f'After Epoch {epoch} Train Loss: {train_loss / (i + 1):.4f}, Train Accuracy: {100 * train_acc / (i + 1):.4f}%, epsilon: {epsilon:.4f}, delta: {target_delta:.4f}'
     print(postfix_str)
     history['train_loss'].append(train_loss / (len(train_dl)))
     history['train_acc'].append(train_acc / (len(train_dl)))
@@ -91,7 +90,7 @@ def train_model(
     batch_size: int = 32, 
     num_epochs: int = 10,
     lr: int = 1e-3,
-    num_workers: int = 1,
+    num_workers: int = 16,
     warmup_epochs: int = 1,
     use_differential_privacy: bool = False,
     max_physical_batch_size: int = 128,
@@ -159,7 +158,7 @@ def train_model(
     for epoch in range(1, num_epochs + 1):
 
         if use_differential_privacy:
-            print(f"Max Physical Batch Size: {max_physical_batch_size}")
+            print(f"Max Physical Batch Size: {max_physical_batch_size}, Num WOrkers: {num_workers}")
             with BatchMemoryManager(data_loader=train_dl, max_physical_batch_size=max_physical_batch_size, optimizer=optimizer) as train_dl_mem:
                 _train_step(
                     model=model,
@@ -238,7 +237,6 @@ def test_model(
     model = model.to(device)
     model.eval()
     loss_fn = nn.CrossEntropyLoss()
-    
     test_dl = DataLoader(test_ds, batch_size=batch_size, num_workers=num_workers)
     
     with torch.no_grad():
@@ -252,7 +250,7 @@ def test_model(
             
             # Run examples through model
             preds = model(inputs)
-            
+
             # Metrics calculation
             loss = loss_fn(preds, labels)
             test_loss += loss.item()

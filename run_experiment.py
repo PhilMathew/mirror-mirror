@@ -105,7 +105,8 @@ def eval_model_performance(
     device: torch.device,
     batch_size: int,
     model_dir: Path,
-    p_bar_desc: str
+    num_workers: int,
+    p_bar_desc: str,
 ):
     test_loss, test_acc, curr_preds, curr_labels = test_model(
         model,
@@ -113,7 +114,8 @@ def eval_model_performance(
         device, 
         batch_size=batch_size, 
         return_preds_and_labels=True, 
-        p_bar_desc=p_bar_desc
+        p_bar_desc=p_bar_desc,
+        num_workers = num_workers,
     )
     
     model_confmat = confusion_matrix(curr_labels, curr_preds)
@@ -165,9 +167,9 @@ def train_single_model(
         json.dump(train_hist, f, indent=4)
     if num_epochs > 1: # plots are useless for training in a single epoch
         plot_history(train_hist, str(model_dir / f'{model_name}_train_hist.png')) # train history plots
-    
+    num_workers = kwargs.get('num_workers', 16)
     # Evaluate performance
-    eval_model_performance(model, test_ds, device, batch_size, model_dir, p_bar_desc=f'Testing {model_name} model')
+    eval_model_performance(model, test_ds, device, batch_size, model_dir, num_workers, p_bar_desc=f'Testing {model_name} model')
     
     return model
 
@@ -435,7 +437,7 @@ def main():
                     in_channels,
                     use_differential_privacy=train_params['use_differential_privacy']
                 )
-                control_model.load_state_dict(torch.load(str(curr_output_dir / 'control' / 'control_state_dict.pt')))
+                control_model.load_state_dict(torch.load(str(curr_output_dir / 'control' / 'control_state_dict.pt'), weights_only=True))
                 control_model = control_model.to(device)
             else:
                 control_model = train_single_model(
@@ -450,7 +452,8 @@ def main():
                     **train_params
                 )
             
-            models_to_score = {'control': control_model.cpu()}
+            # models_to_score = {'control': control_model.cpu()}
+            models_to_score = {'control': str(curr_output_dir / 'control' / 'control_state_dict.pt')}
             # Get unlearned models for each unlearning method
             for unlearning_method, unlearning_params in unlearning_methods.items():
                 unlearned_model_ckpt = curr_output_dir / unlearning_method / f'{unlearning_method}_state_dict.pt'
@@ -460,7 +463,7 @@ def main():
                         in_channels,
                         use_differential_privacy=train_params['use_differential_privacy']
                     )
-                    unlearned_model.load_state_dict(torch.load(str(unlearned_model_ckpt)))
+                    unlearned_model.load_state_dict(torch.load(str(unlearned_model_ckpt), weights_only=True))
                     unlearned_model.to(device)
                 else:
                     if unlearning_method == 'sanity_check':
@@ -494,10 +497,10 @@ def main():
                         )
                 
                 # Load the model onto CPU
-                models_to_score[unlearning_method] = unlearned_model.cpu()
+                models_to_score[unlearning_method] = unlearned_model_ckpt
                 
                 # We have to reload the original model the unlearning methods appear to act in place
-                original_model.load_state_dict(torch.load(str(original_state_dict_path)))
+                original_model.load_state_dict(torch.load(str(original_state_dict_path), weights_only=True))
             
             
             

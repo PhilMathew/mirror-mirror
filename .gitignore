@@ -5,3 +5,5 @@ output
 mia_counterexamples
 saved_plots
 mirror_mirror.egg-info
+good_dp
+default_dp_sgd
