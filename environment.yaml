@@ -1,8 +1,8 @@
 name: unlearning
 channels:
-  - conda-forge
   - pytorch
   - nvidia
+  - conda-forge
   - defaults
 dependencies:
   - scikit-learn
@@ -15,10 +15,11 @@ dependencies:
   - torchvision
   - python
   - pip
-  - pytorch-cuda=12.1
+  - pytorch-cuda=12.4
   - pytorch
   - opacus
   - pip:
     - kaleido==0.2.1
     - seaborn==0.13.2
+    - torchattacks==3.5.1
 prefix: /fast/mathepa1/anaconda3/envs/unlearning

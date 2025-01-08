@@ -12,8 +12,8 @@ import numpy as np
 from torch.nn.utils import clip_grad_norm_
 from opacus import PrivacyEngine
 
-
-# from .selective_synaptic_dampening.src import ssd
+from components.certified_removal import *
+from .selective_synaptic_dampening.src import ssd
 
 
 def get_classwise_ds(ds, num_classes):
@@ -364,6 +364,74 @@ def run_dp_sgd(
 
     #         #     # param.grad = torch.empty([]).to(device)  # Reset for next iteration
     #         # optimizer.zero_grad()
+    return model
+
+
+def run_certified_removal(
+    model: nn.Module, 
+    full_train_ds: Dataset,
+    forget_inds: List[int],
+    device: torch.device,
+    lam: float = 1e-6,
+    batch_size: int = 256,
+    num_workers: int = 16,
+) -> nn.Module:
+    # Mostly adapted from https://github.com/facebookresearch/certified-removal/blob/main/test_removal.py
+    model = deepcopy(model)
+    # Pull out a copy of the fc weights, then remove the fc layer
+    w = deepcopy(model.fc.weight.data)
+    w = w.T.to(device)
+    num_features, num_classes = model.fc.in_features, model.fc.out_features # record these before resetting anything
+    model.fc = nn.Identity()
+    model = model.to(device)
+    
+    # Create full data matrix and labels, along with the same things for the retain set
+    train_dl = DataLoader(full_train_ds, batch_size=batch_size, num_workers=num_workers)
+    X_train, y_train = [], []
+    with torch.no_grad():
+        for batch in tqdm(train_dl, desc="Generating Data Matrix"):
+            inputs, labels = batch
+            inputs, labels = inputs.to(device), labels.to(device)
+            model_out = model(inputs)
+            X_train.append(model_out.detach().cpu())
+            y_train.append(labels.detach().cpu())
+    X_train, y_train = torch.cat(X_train).view(-1, num_features), F.one_hot(torch.cat(y_train), num_classes=num_classes)
+    X_train, y_train = X_train.to(device), y_train.to(device)
+    
+    # Store number of removals
+    num_removes = len(forget_inds)
+
+    # initialize K = X^T * X for fast computation of spectral norm
+    K = X_train.t().mm(X_train)
+    
+    # removal from all one-vs-rest models
+    grad_norm_approx = torch.zeros(num_removes).float()
+    w_approx = w.clone()
+    for i, forget_index in enumerate(forget_inds):
+        for k in range(y_train.shape[1]):
+            # Create a copy with previously removed samples and the current sample all removed
+            X_forget_mask, y_forget_mask = torch.ones(X_train.shape).bool(), torch.ones(y_train.shape).bool()
+            X_forget_mask[forget_inds[:(i + 1)]] = False
+            y_forget_mask[forget_inds[:(i + 1)]] = False
+            X_rem = X_train[X_forget_mask].reshape(-1, X_train.shape[1])
+            y_rem = y_train[y_forget_mask].reshape(-1, y_train.shape[1])[:, k]
+            
+            # Do all the hessian stuff
+            H_inv = lr_hessian_inv(w_approx[:, k], X_rem, y_rem, lam, device=device)
+            grad_i = lr_grad(w_approx[:, k], X_train[forget_index].unsqueeze(0), y_train[forget_index, k].unsqueeze(0), lam)
+            # apply rank-1 down-date to K
+            K -= torch.ger(X_train[forget_index], X_train[forget_index])
+            spec_norm = spectral_norm(K, device=device)
+            
+            Delta = H_inv.mv(grad_i)
+            Delta_p = X_train.mv(Delta)
+            w_approx[:, k] += Delta
+            grad_norm_approx[i] += (Delta.norm() * Delta_p.norm() * spec_norm / 4).cpu()
+    
+    # Update model's classification layer
+    model.fc = nn.Linear(num_features, num_classes, bias=False)
+    model.fc.weight = nn.Parameter(w_approx.T, requires_grad=True)
+    
     return model
 
 

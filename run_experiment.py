@@ -25,7 +25,7 @@ from distinguishers.mse_score import calc_mse_score
 from distinguishers.randomness_score import compute_model_randomness
 from unlearning_frameworks.unlearning_methods import *
 from utils.plot_utils import plot_confmat, plot_history
-from utils.train_utils import test_model, train_model
+from utils.train_utils import test_model, train_model, add_cr_mechanism
 
 
 
@@ -108,6 +108,8 @@ def eval_model_performance(
     num_workers: int,
     p_bar_desc: str,
 ):
+    model_dir.mkdir(parents=True, exist_ok=True)
+    
     test_loss, test_acc, curr_preds, curr_labels = test_model(
         model,
         test_ds, 
@@ -161,7 +163,7 @@ def train_single_model(
     
     # Save out training history and model state dict
     model_dir = output_dir / model_name
-    model_dir.mkdir(exist_ok=True)
+    model_dir.mkdir(exist_ok=True, parents=True)
     torch.save(model.state_dict(), str(model_dir / f'{model_name}_state_dict.pt')) # model
     with open(str(model_dir / f'{model_name}_train_hist.json'), 'w') as f: # train history
         json.dump(train_hist, f, indent=4)
@@ -179,6 +181,7 @@ def run_unlearning(
     unlearning_params: dict,
     original_model: nn.Module,
     forget_ds: Dataset,
+    forget_inds: List[int],
     full_train_ds: Dataset,
     retain_ds: Dataset,
     test_ds: Dataset,
@@ -226,15 +229,16 @@ def run_unlearning(
                 retain_ds=retain_ds,
                 device=device
             )
-        case 'dp_sgd':
-            # Unlearning for DP-SGD is a no-op
-            unlearned_model = build_resnet18(
-                num_classes, 
-                in_channels, 
-                pretrained=False,
-                use_differential_privacy=True
-            ).to(device)
-            unlearned_model.load_state_dict(original_model.state_dict())
+        case 'certified_removal':
+            unlearned_model = run_certified_removal(
+                model=original_model,
+                full_train_ds=full_train_ds,
+                forget_inds=forget_inds,
+                lam=unlearning_params['lambda'],
+                device=device,
+                batch_size=batch_size,
+                num_workers=num_workers
+            )
         case _:
             raise ValueError(f'"{unlearning_method}" is an unknown unlearning method')
         
@@ -394,7 +398,44 @@ def main():
             output_dir=output_dir,
             **train_params
         )
+    
+    # Add a certified removal mechanism if necessary
+    if train_params['use_certified_removal']: 
+        assert train_params['use_differential_privacy'], 'Certified removal requires a DP model as the feature extractor'
+        original_state_dict_path = output_dir / 'original' / f'original_cr_state_dict.pt'
         
+        print('Adding certified removal mechanism to the original model')
+        print('NOTE: THIS WILL NOT PLAY NICE IF OTHER UNLEARNING METHODS ARE USED')
+        if args.use_existing_models and original_state_dict_path.exists():
+            original_model = build_resnet18(
+                num_classes, 
+                in_channels,
+                use_differential_privacy=train_params['use_differential_privacy']
+            )
+            original_model.fc = nn.Linear(original_model.fc.in_features, num_classes, bias=False) # re-initialize the final layer but remove the bias term
+            original_model.load_state_dict(torch.load(str(original_state_dict_path)))
+            original_model = original_model.to(device)
+        else:
+            original_model = add_cr_mechanism(
+                model=original_model,
+                train_ds=full_train_ds,
+                lam=unlearning_methods['certified_removal']['lambda'],
+                sigma=unlearning_methods['certified_removal']['sigma'],
+                batch_size=config_dict['batch_size'],
+                num_workers=train_params['num_workers'],
+                device=device
+            )
+            torch.save(original_model.state_dict(), str(original_state_dict_path)) # model
+            eval_model_performance(
+                model=original_model, 
+                test_ds=test_ds, 
+                device=device, 
+                batch_size=config_dict['batch_size'], 
+                model_dir=output_dir / 'original' / 'cr_performance', 
+                num_workers=train_params['num_workers'],
+                p_bar_desc=f'Testing original model with CR mechanism'
+            )
+        print('Certified removal mechanism added successfully')
     
     # Iterate over all the desired forget sets
     score_dicts = {d: {k: [] for k in ('forget_set', 'run_number', 'model', 'score')} for d in distinguisher_params.keys()}
@@ -454,8 +495,8 @@ def main():
                     **train_params
                 )
             
-            # models_to_score = {'control': control_model.cpu()}
-            models_to_score = {'control': str(curr_output_dir / 'control' / 'control_state_dict.pt')}
+            models_to_score = {'control': control_model.cpu()}
+            # models_to_score = {'control': str(curr_output_dir / 'control' / 'control_state_dict.pt')}
             # Get unlearned models for each unlearning method
             for unlearning_method, unlearning_params in unlearning_methods.items():
                 unlearned_model_ckpt = curr_output_dir / unlearning_method / f'{unlearning_method}_state_dict.pt'
@@ -468,17 +509,17 @@ def main():
                     unlearned_model.load_state_dict(torch.load(str(unlearned_model_ckpt), weights_only=True))
                     unlearned_model.to(device)
                 else:
-                    if unlearning_method == 'sanity_check':
+                    if unlearning_method == 'dp_sgd': # in case of DP-SGD we unlearn by just making a new DP model
                         curr_seed = torch.seed()
                         torch.manual_seed(curr_seed + 1)
                         unlearned_model = train_single_model(
-                            train_ds=retain_ds_random_aug,
+                            train_ds=full_train_ds_random_aug,
                             test_ds=test_ds,
                             num_classes=num_classes,
                             in_channels=in_channels,
                             batch_size=config_dict['batch_size'],
                             device=device,
-                            model_name='sanity_check',
+                            model_name='dp_sgd_retrained',
                             output_dir=curr_output_dir,
                             **train_params
                         )
@@ -488,6 +529,7 @@ def main():
                             unlearning_params=unlearning_params,
                             original_model=copy.deepcopy(original_model),
                             forget_ds=forget_ds,
+                            forget_inds=forget_inds,
                             full_train_ds=full_train_ds,
                             retain_ds=retain_ds,
                             test_ds=test_ds,
@@ -500,7 +542,7 @@ def main():
                         )
                 
                 # Load the model onto CPU
-                models_to_score[unlearning_method] = unlearned_model_ckpt
+                models_to_score[unlearning_method] = unlearned_model
                 
                 # We have to reload the original model the unlearning methods appear to act in place
                 original_model.load_state_dict(torch.load(str(original_state_dict_path), weights_only=True))
