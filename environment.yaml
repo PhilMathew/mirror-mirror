@@ -21,4 +21,4 @@ dependencies:
   - pip:
     - kaleido==0.2.1
     - seaborn==0.13.2
-prefix: /fast/mathepa1/anaconda3/envs/unlearning
+# prefix: /fast/mathepa1/anaconda3/envs/unlearning

@@ -19,13 +19,13 @@ import copy
 
 from components.datasets import init_full_ds
 from components.resnet import build_resnet18
-from distinguishers.logreg_mia import run_logreg_mia
-from distinguishers.random_perturbation_kld import compute_kld_over_perturbations, compute_svm_consistency
-from distinguishers.mse_score import calc_mse_score
-from distinguishers.randomness_score import compute_model_randomness
-from unlearning_frameworks.unlearning_methods import *
-from utils.plot_utils import plot_confmat, plot_history
-from utils.train_utils import test_model, train_model
+from mirrormirror.distinguishers.logreg_mia import run_logreg_mia
+from mirrormirror.distinguishers.random_perturbation_kld import compute_kld_over_perturbations, compute_svm_consistency
+from mirrormirror.distinguishers.mse_score import calc_mse_score
+from mirrormirror.distinguishers.randomness_score import compute_model_randomness
+from mirrormirror.unlearning_frameworks.unlearning_methods import *
+from mirrormirror.utils.plot_utils import plot_confmat, plot_history
+from mirrormirror.utils.train_utils import test_model, train_model
 
 
 
@@ -228,13 +228,24 @@ def run_unlearning(
             )
         case 'dp_sgd':
             # Unlearning for DP-SGD is a no-op
+
             unlearned_model = build_resnet18(
                 num_classes, 
                 in_channels, 
                 pretrained=False,
                 use_differential_privacy=True
             ).to(device)
-            unlearned_model.load_state_dict(original_model.state_dict())
+            unlearned_model = run_dp_sgd(
+                model=unlearned_model,
+                forget_ds=forget_ds,
+                full_train_ds=full_train_ds,
+                device=device,
+                num_workers = num_workers,
+                batch_size = batch_size,
+                in_channels = in_channels,
+                **kwargs,
+            )
+            # unlearned_model.load_state_dict(original_model.state_dict())
         case _:
             raise ValueError(f'"{unlearning_method}" is an unknown unlearning method')
         
@@ -509,7 +520,13 @@ def main():
             
             # Get distinguisher scores for the models
             for distinguisher, curr_distinguisher_params in distinguisher_params.items():
-                for model_name, model in tqdm(models_to_score.items(), desc=f'Scoring models for {distinguisher}'):
+                for model_name, model_path in tqdm(models_to_score.items(), desc=f'Scoring models for {distinguisher}'):
+                    model = build_resnet18(
+                        num_classes, 
+                        in_channels,
+                        use_differential_privacy=train_params['use_differential_privacy']
+                    )
+                    model.load_state_dict(torch.load(model_path, weights_only=True))
                     score = compute_distinguisher_score(
                         distinguisher=distinguisher,
                         candidate_model=model,

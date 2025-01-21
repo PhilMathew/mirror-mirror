@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader, Dataset, ConcatDataset, Subset
 import numpy as np
 from torch.nn.utils import clip_grad_norm_
 from opacus import PrivacyEngine
+from ..utils.train_utils import train_model
 
 
 # from .selective_synaptic_dampening.src import ssd
@@ -312,58 +313,19 @@ def run_dp_sgd(
     forget_ds: Dataset,
     full_train_ds: Dataset,
     device: torch.device,
-    eps: float = 1e-3,
-    delta: float = 1e-3,
-    batch_size: int = 256,
-    num_workers: int = 16,
-    lr: float = 1e-3,
+    num_epochs: int = 40,
+    num_workers: int = 1,
+    batch_size: int = 2,
+    **kwargs,
 ) -> nn.Module:
     """
     """
-    # loss_fn = torch.nn.CrossEntropyLoss()
-    # optimizer = torch.optim.SGD(lr=lr, params = model.parameters())
-    # privacy_engine = PrivacyEngine()
-    # dataloader = DataLoader(full_train_ds, batch_size=batch_size)
-    # model.train()
-    # model, optimizer, dataloader = privacy_engine.make_private(
-    #     module=model,
-    #     optimizer=optimizer,
-    #     data_loader=dataloader,
-    #     max_grad_norm=1.0,
-    #     noise_multiplier=1.0,
-    # )
-    
-    #     # model.register_forward_hook(forward_hook)
-    # # model.register_backward_hook(backward_hook)
-    # for epoch in range(50):
-    #     for x_batch,y_batch in tqdm(dataloader, total=len(dataloader)):
-            
-    #         # Run the microbatches
-    #         # for idx, (x, y) in enumerate(zip(x_batch, y_batch)):
-    #         #     y_hat = model(torch.stack([x]*2).to(device))[0]
-    #         y_hat = model(x_batch.to(device))
-    #         loss = loss_fn(y_hat, y_batch.to(device))
-    #         loss.backward()
-    #         # Clip each parameter's per-sample gradient
-    #         optimizer.step()
-    #         optimizer.zero_grad()
-    #         #     for param in model.parameters():
-    #         #         per_sample_grad = param.grad.detach().clone()
-    #         #         clip_grad_norm_(per_sample_grad, max_norm=1)  # in-place
-    #         #         param.accumulated_grads.append(per_sample_grad)  
-                
-    #         # # Aggregate back
-    #         # for param in model.parameters():
-    #         #     param.grad = torch.stack(param.accumulated_grads, dim=0).mean(axis=0)
-
-    #         # # Now we are ready to update and add noise!
-    #         # for param in model.parameters():
-    #         #     param = param - lr * param.grad
-    #         #     noise = torch.empty(param.shape).normal_(mean=0, std=eps).to(device)
-    #         #     param += noise
-
-    #         #     # param.grad = torch.empty([]).to(device)  # Reset for next iteration
-    #         # optimizer.zero_grad()
+    train_history = train_model(model, full_train_ds, device=device,
+        num_epochs=num_epochs,
+        batch_size = batch_size,
+        num_workers=num_workers,
+        **kwargs
+    )
     return model
 
 

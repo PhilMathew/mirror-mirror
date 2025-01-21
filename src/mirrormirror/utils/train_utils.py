@@ -75,7 +75,10 @@ def _train_step(
                 postfix_str = f'Train Loss: {train_loss / (i + 1):.4f}, Train Accuracy: {100 * train_acc / (i + 1):.4f}%'
             p_bar.set_postfix_str(postfix_str)
             p_bar.update()
-
+    try:
+        epsilon = privacy_engine.get_epsilon(target_delta)
+    except ValueError as e:
+        epsilon = np.nan
     postfix_str = f'After Epoch {epoch} Train Loss: {train_loss / (i + 1):.4f}, Train Accuracy: {100 * train_acc / (i + 1):.4f}%, epsilon: {epsilon:.4f}, delta: {target_delta:.4f}'
     print(postfix_str)
     history['train_loss'].append(train_loss / (len(train_dl)))
@@ -158,7 +161,7 @@ def train_model(
     for epoch in range(1, num_epochs + 1):
 
         if use_differential_privacy:
-            print(f"Max Physical Batch Size: {max_physical_batch_size}, Num WOrkers: {num_workers}")
+            # print(f"Max Physical Batch Size: {max_physical_batch_size}, Num WOrkers: {num_workers}")
             with BatchMemoryManager(data_loader=train_dl, max_physical_batch_size=max_physical_batch_size, optimizer=optimizer) as train_dl_mem:
                 _train_step(
                     model=model,
