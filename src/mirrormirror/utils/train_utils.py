@@ -9,6 +9,7 @@ from tqdm import tqdm
 from opacus import PrivacyEngine
 from opacus.utils.batch_memory_manager import BatchMemoryManager
 
+from components.certified_removal import ovr_lr_optimize
 
 
 # From https://github.com/if-loops/selective-synaptic-dampening.git
@@ -64,23 +65,10 @@ def _train_step(
         # Metrics calculation
         train_loss += loss.item()
         train_acc += (torch.sum(F.softmax(preds, dim=-1).argmax(dim=-1) == labels) / labels.shape[0]).item()
-        if (i+1) % 200 == 0:
-            if use_differential_privacy:
-                try:
-                    epsilon = privacy_engine.get_epsilon(target_delta)
-                except ValueError as e:
-                    epsilon = np.nan
-                postfix_str = f'Train Loss: {train_loss / (i + 1):.4f}, Train Accuracy: {100 * train_acc / (i + 1):.4f}%, epsilon: {epsilon:.4f}, delta: {target_delta:.4f}'
-            else:
-                postfix_str = f'Train Loss: {train_loss / (i + 1):.4f}, Train Accuracy: {100 * train_acc / (i + 1):.4f}%'
-            p_bar.set_postfix_str(postfix_str)
-            p_bar.update()
-    try:
-        epsilon = privacy_engine.get_epsilon(target_delta)
-    except ValueError as e:
-        epsilon = np.nan
-    postfix_str = f'After Epoch {epoch} Train Loss: {train_loss / (i + 1):.4f}, Train Accuracy: {100 * train_acc / (i + 1):.4f}%, epsilon: {epsilon:.4f}, delta: {target_delta:.4f}'
-    print(postfix_str)
+    postfix_str = f'Train Loss: {train_loss / (i + 1):.4f}, Train Accuracy: {100 * train_acc / (i + 1):.4f}%'
+    p_bar.set_postfix_str(postfix_str)
+    p_bar.update()
+
     history['train_loss'].append(train_loss / (len(train_dl)))
     history['train_acc'].append(train_acc / (len(train_dl)))
     
@@ -92,7 +80,7 @@ def train_model(
     val_ds: Optional[Dataset] = None,
     batch_size: int = 32, 
     num_epochs: int = 10,
-    lr: int = 1e-3,
+    lr: float = 1e-3,
     num_workers: int = 16,
     warmup_epochs: int = 1,
     use_differential_privacy: bool = False,
@@ -115,7 +103,7 @@ def train_model(
     :param num_epochs: Number of training epochs, defaults to 10
     :type num_epochs: int, optional
     :param lr: Initial learning rate, defaults to 1e-3
-    :type lr: int, optional
+    :type lr: float, optional
     :param num_workers: Number of workers for dataloader, defaults to 16
     :type num_workers: int, optional
     :param warmup_epochs: Number of warmup epochs, defaults to 1
@@ -191,7 +179,7 @@ def train_model(
             val_loss, val_acc = test_model(
                 model,
                 val_ds, 
-                batch_size=batch_size,
+                batch_size=max_physical_batch_size if use_differential_privacy else batch_size,
                 device=device,
                 p_bar_desc='Running Validation',
                 return_preds_and_labels=False
@@ -270,3 +258,52 @@ def test_model(
 
     return (test_loss, test_acc, all_preds, all_labels) if return_preds_and_labels else (test_loss, test_acc)
 
+
+def add_cr_mechanism(
+    model: nn.Module,
+    train_ds: Dataset, 
+    device: torch.device,
+    lam: float = 1e-6,
+    sigma: float = 10,
+    batch_size: int = 32, 
+    num_steps: int = 100,
+    num_workers: int = 16,
+    tol: float = 1e-10,
+) -> nn.Module:  
+    # NOTE: The model is assumed to have already been trained!!
+    # Drop classification layer (equivalent to setting it to the identity function)
+    num_features, num_classes = model.fc.in_features, model.fc.out_features # record these before resetting anything
+    model.fc = nn.Identity()
+    model.eval() # to prevent updates to the model itself
+    
+    # Generate data matrix X and labels vector y
+    train_dl = DataLoader(train_ds, batch_size=batch_size, num_workers=num_workers)
+    X, y = [], []
+    with torch.no_grad():
+        for batch in tqdm(train_dl, desc='Generating Data Matrix'):
+            inputs, labels = batch
+            inputs, labels = inputs.to(device), labels.to(device)
+            model_out = model(inputs)
+            X.append(model_out.detach().cpu())
+            y.append(labels.detach().cpu())
+    X, y = torch.cat(X).view(-1, num_features), F.one_hot(torch.cat(y), num_classes=num_classes)
+    X, y = X.to(device), y.to(device)
+    
+    # Sample perturbation vector
+    b = sigma * torch.randn(X.size(1), y.size(1)).float().to(device)
+    
+    # train K binary LR classifiers jointly
+    w = ovr_lr_optimize(
+        X, y,
+        lam=lam,
+        b=b,
+        tol=tol,
+        num_steps=num_steps,
+        device=device,
+        verbose=True
+    )
+    
+    model.fc = nn.Linear(num_features, num_classes, bias=False)
+    model.fc.weight = nn.Parameter(w.T, requires_grad=True)
+    
+    return model
