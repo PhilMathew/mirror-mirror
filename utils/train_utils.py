@@ -9,7 +9,7 @@ from tqdm import tqdm
 from opacus import PrivacyEngine
 from opacus.utils.batch_memory_manager import BatchMemoryManager
 
-from components.certified_removal import ovr_lr_optimize
+from components.certified_removal import ovr_lr_optimize, onehot, L2NormLayer
 
 
 # From https://github.com/if-loops/selective-synaptic-dampening.git
@@ -39,10 +39,10 @@ def _train_step(
     loss_fn: nn.Module,
     device: torch.device,
     use_differential_privacy: bool,
+    use_param_norm: bool,
     history: Dict[str, List[float]],
     epoch: int,
-    privacy_engine: Optional[PrivacyEngine] = None,
-    target_delta: Optional[float] = None,
+    **kwargs
 ):
     p_bar = tqdm(train_dl, desc=f'Epoch {epoch}')
     train_loss, train_acc = 0, 0
@@ -59,6 +59,12 @@ def _train_step(
         
         # Backprop
         loss = loss_fn(preds, labels)
+        if use_param_norm:
+            param_norm = nn.utils.parameters_to_vector(model.parameters()).norm()
+            if param_norm > kwargs.get('max_norm'):
+                scale_factor = kwargs.get('max_norm') / param_norm
+                for param in model.parameters():
+                    param.data *= scale_factor
         loss.backward()
         optimizer.step()
         
@@ -162,6 +168,7 @@ def train_model(
                     epoch=epoch,
                     privacy_engine=privacy_engine,
                     target_delta=target_delta
+                    **kwargs
                 )
         else:
             _train_step(
@@ -173,6 +180,7 @@ def train_model(
                 use_differential_privacy=use_differential_privacy,
                 history=history,
                 epoch=epoch,
+                **kwargs
             )
         
         if val_ds is not None:
@@ -271,6 +279,9 @@ def add_cr_mechanism(
     tol: float = 1e-10,
 ) -> nn.Module:  
     # NOTE: The model is assumed to have already been trained!!
+    # Change the pre-fc norm
+    model.prefc_norm = L2NormLayer() # CR uses an L2 norm prior to the final layer
+    
     # Drop classification layer (equivalent to setting it to the identity function)
     num_features, num_classes = model.fc.in_features, model.fc.out_features # record these before resetting anything
     model.fc = nn.Identity()
@@ -286,7 +297,7 @@ def add_cr_mechanism(
             model_out = model(inputs)
             X.append(model_out.detach().cpu())
             y.append(labels.detach().cpu())
-    X, y = torch.cat(X).view(-1, num_features), F.one_hot(torch.cat(y), num_classes=num_classes)
+    X, y = torch.cat(X).view(-1, num_features), onehot(torch.cat(y))
     X, y = X.to(device), y.to(device)
     
     # Sample perturbation vector

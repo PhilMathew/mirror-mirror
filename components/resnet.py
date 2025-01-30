@@ -55,6 +55,37 @@ class ResNet(torchvision.models.ResNet):
         )
         self.in_channels = in_channels
         self.conv1 = nn.Conv2d(in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        self.prefc_norm = nn.Identity() # this will be modified by the CR mechanism later
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.maxpool(x)
+
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
+
+        x = self.avgpool(x)
+        x = torch.flatten(x, 1)
+
+        x = self.prefc_norm(x)
+        x = self.fc(x)
+        
+        return x
+
+
+def clean_state_dict(loaded_state: Mapping[str, Any], curr_state: Mapping[str, Any]) -> Mapping[str, Any]:
+    state_dict = {}
+    for k in loaded_state.keys():
+        if 'fc' in k.split('.') or 'prefc_norm' in k.split('.'):
+            state_dict[k] = curr_state[k]
+        else:
+            state_dict[k] = loaded_state[k]
+    
+    return state_dict
 
 
 def build_resnet50(num_classes: int, in_channels: int, pretrained: bool = True) -> ResNet:
@@ -78,14 +109,7 @@ def build_resnet50(num_classes: int, in_channels: int, pretrained: bool = True) 
     if pretrained:
         loaded_state = ResNet50_Weights.DEFAULT.get_state_dict(progress=True, check_hash=True)
         curr_state = model.state_dict()
-        
-        state_dict = {}
-        for k in loaded_state.keys():
-            if 'fc' not in k.split('.'):
-                state_dict[k] = loaded_state[k]
-            else:
-                state_dict[k] = curr_state[k]
-        
+        state_dict = clean_state_dict(loaded_state, curr_state)
         model.load_state_dict(state_dict)
     
     return model
@@ -114,14 +138,7 @@ def build_resnet18(num_classes: int, in_channels: int, pretrained: bool = True, 
     if pretrained:
         loaded_state = ResNet18_Weights.DEFAULT.get_state_dict(progress=True, check_hash=True)
         curr_state = model.state_dict()
-        
-        state_dict = {}
-        for k in loaded_state.keys():
-            if 'fc' not in k.split('.'):
-                state_dict[k] = loaded_state[k]
-            else:
-                state_dict[k] = curr_state[k]
-        
+        state_dict = clean_state_dict(loaded_state, curr_state)
         model.load_state_dict(state_dict)
     
     if use_differential_privacy:

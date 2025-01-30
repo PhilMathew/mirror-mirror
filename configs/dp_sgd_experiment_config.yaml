@@ -25,7 +25,7 @@ distinguisher_params:
     mia_type: logreg
   mse: null
 unlearning_methods:
-  dp_sgd: null
+  dp_sgd_retrained: null
 batch_size: 256
 train_params:
   num_epochs: 10

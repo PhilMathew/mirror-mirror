@@ -4,6 +4,13 @@ import math
 import torch.nn as nn
 import torch.nn.functional as F
 
+
+def onehot(y):
+    y_onehot = -torch.ones(y.size(0), (y.max() + 1).int().item()).float()
+    y_onehot.scatter_(1, y.long().unsqueeze(1), 1)
+    return y_onehot
+
+
 def lr_loss(w, X, y, lam):
     return -F.logsigmoid(y * X.mv(w)).mean() + lam * w.pow(2).sum() / 2
 
@@ -114,3 +121,11 @@ def spectral_norm(A, device, num_iters=20):
         norm = x.norm()
         x /= norm
     return math.sqrt(norm)  
+
+
+class L2NormLayer(nn.Module):
+    def __init__(self) -> None:
+        super(L2NormLayer, self).__init__()
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return F.normalize(x, p=2, dim=1)

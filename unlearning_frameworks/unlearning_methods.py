@@ -14,6 +14,7 @@ from opacus import PrivacyEngine
 
 from components.certified_removal import *
 from .selective_synaptic_dampening.src import ssd
+import time
 
 
 def get_classwise_ds(ds, num_classes):
@@ -376,8 +377,8 @@ def run_certified_removal(
     batch_size: int = 256,
     num_workers: int = 16,
 ) -> nn.Module:
+    device = torch.device('cuda')
     # Mostly adapted from https://github.com/facebookresearch/certified-removal/blob/main/test_removal.py
-    model = deepcopy(model)
     # Pull out a copy of the fc weights, then remove the fc layer
     w = deepcopy(model.fc.weight.data)
     w = w.T.to(device)
@@ -395,7 +396,7 @@ def run_certified_removal(
             model_out = model(inputs)
             X_train.append(model_out.detach().cpu())
             y_train.append(labels.detach().cpu())
-    X_train, y_train = torch.cat(X_train).view(-1, num_features), F.one_hot(torch.cat(y_train), num_classes=num_classes)
+    X_train, y_train = torch.cat(X_train).view(-1, num_features), onehot(torch.cat(y_train))
     X_train, y_train = X_train.to(device), y_train.to(device)
     
     # Store number of removals
@@ -403,31 +404,38 @@ def run_certified_removal(
 
     # initialize K = X^T * X for fast computation of spectral norm
     K = X_train.t().mm(X_train)
-    
     # removal from all one-vs-rest models
     grad_norm_approx = torch.zeros(num_removes).float()
     w_approx = w.clone()
-    for i, forget_index in enumerate(forget_inds):
+    all_inds = set(range(X_train.shape[0]))
+    for i, forget_index in enumerate(tqdm(forget_inds)):
         for k in range(y_train.shape[1]):
             # Create a copy with previously removed samples and the current sample all removed
-            X_forget_mask, y_forget_mask = torch.ones(X_train.shape).bool(), torch.ones(y_train.shape).bool()
-            X_forget_mask[forget_inds[:(i + 1)]] = False
-            y_forget_mask[forget_inds[:(i + 1)]] = False
-            X_rem = X_train[X_forget_mask].reshape(-1, X_train.shape[1])
-            y_rem = y_train[y_forget_mask].reshape(-1, y_train.shape[1])[:, k]
+            s = time.time()
+            rem_inds = list(all_inds - set(forget_inds[:(i + 1)]))
+            X_rem = X_train[rem_inds, :]
+            y_rem = y_train[rem_inds, k]
+            # print(f'Part 1 time: {time.time() - s}')
             
+            s = time.time()
             # Do all the hessian stuff
             H_inv = lr_hessian_inv(w_approx[:, k], X_rem, y_rem, lam, device=device)
             grad_i = lr_grad(w_approx[:, k], X_train[forget_index].unsqueeze(0), y_train[forget_index, k].unsqueeze(0), lam)
+            # print(f'Part 2 time: {time.time() - s}')
+            
+            s = time.time()
             # apply rank-1 down-date to K
             K -= torch.ger(X_train[forget_index], X_train[forget_index])
             spec_norm = spectral_norm(K, device=device)
+            # print(f'Part 3 time: {time.time() - s}')
             
+            s = time.time()
             Delta = H_inv.mv(grad_i)
             Delta_p = X_train.mv(Delta)
             w_approx[:, k] += Delta
             grad_norm_approx[i] += (Delta.norm() * Delta_p.norm() * spec_norm / 4).cpu()
-    
+            # print(f'Part 4 time: {time.time() - s}')
+            
     # Update model's classification layer
     model.fc = nn.Linear(num_features, num_classes, bias=False)
     model.fc.weight = nn.Parameter(w_approx.T, requires_grad=True)

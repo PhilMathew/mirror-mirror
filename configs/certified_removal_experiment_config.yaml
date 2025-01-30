@@ -24,18 +24,22 @@ distinguisher_params:
   mia:
     mia_type: logreg
   mse: null
+  kld:
+    perturbation_type: gaussian
 unlearning_methods:
   certified_removal: 
-    lambda: 1.e-3
-    sigma: 1.e-3
+    lambda: 0.25
+    sigma: 2
+    # epsilon: 1.e-1
+    # delta: 1.e-2
 batch_size: 512
 train_params:
   num_epochs: 40
   learning_rate: 0.01
   use_differential_privacy: True
   use_certified_removal: True
-  epsilon: 50
-  delta: 1.e-4
+  epsilon: 1.e-1
+  delta: 1.e-2
   max_physical_batch_size: 128
-  num_workers: 1
+  num_workers: 0
 runs_per_forget_set: 1
