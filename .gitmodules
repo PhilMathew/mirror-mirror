@@ -3,5 +3,5 @@
 	url = https://github.com/if-loops/selective-synaptic-dampening.git
 
 [submodule "unlearning_frameworks/certified-deep-unlearning"]
-	path = unlearning_frameworks/certified-deep-unlearning
+	path = unlearning_frameworks/certified_deep_unlearning
 	url = https://github.com/zhangbinchi/certified-deep-unlearning.git
