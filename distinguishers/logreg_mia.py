@@ -54,9 +54,12 @@ def get_membership_attack_data(retain_ds, forget_ds, test_ds, model, batch_size,
 
 
 # https://arxiv.org/abs/2205.08096
-def get_membership_attack_prob(retain_ds, forget_ds, test_ds, model, batch_size, device):
-    X_f, Y_f, X_r, Y_r = get_membership_attack_data(
-        retain_ds, forget_ds, test_ds, model, batch_size, device
+def get_membership_attack_prob(retain_ds, forget_ds, test_ds, candidate_model, original_model, batch_size, device):
+    _, _, X_r, Y_r = get_membership_attack_data( # train with original
+        retain_ds, forget_ds, test_ds, original_model, batch_size, device
+    )
+    X_f, Y_f, _, _ = get_membership_attack_data( # score with candidate
+        retain_ds, forget_ds, test_ds, candidate_model, batch_size, device
     )
     # clf = SVC(C=3,gamma='auto',kernel='rbf')
     clf = LogisticRegression(
@@ -69,7 +72,8 @@ def get_membership_attack_prob(retain_ds, forget_ds, test_ds, model, batch_size,
 
 # Rest is own work
 def run_logreg_mia(
-    model: nn.Module,
+    candidate_model: nn.Module,
+    original_model: nn.Module,
     model_forget_ds: Dataset,
     model_retain_ds: Dataset,
     model_test_ds: Dataset,
@@ -79,8 +83,10 @@ def run_logreg_mia(
     """
     Runs a membership inference attack using a logistic regression model
 
-    :param model: Model to infer membership on
-    :type model: nn.Module
+    :param candidate_model: Model to attack
+    :type candidate_model: nn.Module
+    :param original_model: Model to train attack with
+    :type original_model: nn.Module
     :param model_forget_ds: Forget set
     :type model_forget_ds: Dataset
     :param model_retain_ds: Retain set (used to train the attack)
@@ -98,7 +104,8 @@ def run_logreg_mia(
         retain_ds=model_retain_ds,
         forget_ds=model_forget_ds,
         test_ds=model_test_ds,
-        model=model,
+        candidate_model=candidate_model,
+        original_model=original_model,
         batch_size=batch_size,
         device=device
     )

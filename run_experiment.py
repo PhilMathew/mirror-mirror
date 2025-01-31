@@ -299,7 +299,8 @@ def compute_distinguisher_score(
             match distinguisher_params['mia_type']:
                 case 'logreg':
                     distinguisher_score = run_logreg_mia(
-                        model=candidate_model,
+                        candidate_model=candidate_model,
+                        original_model=original_model,
                         model_forget_ds=forget_ds,
                         model_retain_ds=retain_ds,
                         model_test_ds=test_ds,
