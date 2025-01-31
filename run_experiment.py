@@ -249,6 +249,20 @@ def run_unlearning(
                 batch_size=batch_size,
                 num_workers=num_workers
             )
+        case 'certified_deep_unlearning':
+            unlearned_model = run_certified_deep_unlearning(
+                model=original_model,
+                retain_ds=retain_ds,
+                weight_decay=unlearning_params['weight_decay'],
+                s1=unlearning_params['s1'],
+                s2=unlearning_params['s2'],
+                gamma=unlearning_params['gamma'],
+                scale=unlearning_params['scale'],
+                std=unlearning_params['std'],
+                device=device,
+                batch_size=batch_size,
+                num_workers=num_workers
+            ) 
         case _:
             raise ValueError(f'"{unlearning_method}" is an unknown unlearning method')
         
@@ -395,7 +409,7 @@ def main():
             num_classes, 
             in_channels,
             pretrained=False, # we're loading in weights anyway
-            use_differential_privacy=train_params['use_differential_privacy']
+            use_differential_privacy=train_params.get('use_differential_privacy', False)
         )
         original_model.load_state_dict(torch.load(str(original_state_dict_path)))
         original_model = original_model.to(device)
@@ -497,7 +511,7 @@ def main():
                     num_classes, 
                     in_channels,
                     pretrained=False, # loading new weights anyway
-                    use_differential_privacy=train_params['use_differential_privacy']
+                    use_differential_privacy=train_params.get('use_differential_privacy', False)
                 )
                 control_model.load_state_dict(torch.load(str(curr_output_dir / 'control' / 'control_state_dict.pt'), weights_only=True))
                 control_model = control_model.to(device)
@@ -525,7 +539,7 @@ def main():
                         num_classes, 
                         in_channels,
                         pretrained=False, # loading new weights anyway
-                        use_differential_privacy=train_params['use_differential_privacy']
+                        use_differential_privacy=train_params.get('use_differential_privacy', False)
                     )
                     if unlearning_method == 'certified_removal':
                         unlearned_model.fc = nn.Linear(unlearned_model.fc.in_features, num_classes, bias=False) # re-initialize the final layer but remove the bias term

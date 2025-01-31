@@ -3,6 +3,7 @@ import random
 from typing import *
 from copy import deepcopy
 
+import torch.utils
 from tqdm import tqdm
 import torch
 from torch import nn
@@ -14,6 +15,7 @@ from opacus import PrivacyEngine
 
 from components.certified_removal import *
 from .selective_synaptic_dampening.src import ssd
+from .certified_deep_unlearning.unlearn import grad_batch, newton_update
 import time
 
 
@@ -509,56 +511,27 @@ def run_ssd(
     return model
 
 
-# # TODO: Actually read the paper to understand what's happening in this unlearning method
-# def run_UNSIR(
-#     model,
-#     retain_ds,
-#     forget_ds,
-#     num_classes,
-#     forget_class,
-#     device,
-# ):
-#     classwise_train = get_classwise_ds(
-#         ConcatDataset((retain_ds, forget_ds)),
-#         num_classes,
-#     )
-#     noise_batch_size = 32
-#     # collect some samples from each class
-#     num_samples = 500
-#     retain_samples = []
-#     for i in range(num_classes):
-#         if i != forget_class:
-#             retain_samples += classwise_train[i][:num_samples]
+def run_certified_deep_unlearning(
+    model: nn.Module, 
+    retain_ds: Dataset,
+    device: torch.device,
+    weight_decay: float = 5e-4,
+    s1: float = 10,
+    s2: float = 1000,
+    gamma: float = 1e-2,
+    scale: float = 1000,
+    std: float = 1e-3,
+    batch_size: int = 256,
+    num_workers: int = 16,
+) -> nn.Module:
+    model = model.to(device)
+    model.eval()
+    
+    res_loader = torch.utils.data.DataLoader(retain_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    g = grad_batch(res_loader, weight_decay, model, device)
 
-#     forget_class_label = forget_class
-#     img_shape = next(iter(retain_ds.dataset))[0].shape[-1]
-#     noise = UNSIR_noise(noise_batch_size, 3, img_shape, img_shape).to(device)
-#     noise = UNSIR_noise_train(
-#         noise, model, forget_class_label, 250, noise_batch_size, device=device
-#     )
-#     noisy_loader = UNSIR_create_noisy_loader(
-#         noise, forget_class_label, retain_samples, noise_batch_size, device=device
-#     )
-#     # impair step
-#     _ = fit_one_unlearning_cycle(
-#         1, model, noisy_loader, device=device, lr=0.0001
-#     )
-#     # repair step
-#     other_samples = []
-#     for i in range(len(retain_samples)):
-#         other_samples.append(
-#             (
-#                 retain_samples[i][0].cpu(),
-#                 torch.tensor(retain_samples[i][2]),
-#                 torch.tensor(retain_samples[i][2]),
-#             )
-#         )
+    delta = newton_update(g, batch_size, retain_ds, weight_decay, gamma, model, s1, s2, scale, device)
+    for i, param in enumerate(model.parameters()):
+        param.data.add_(-delta[i] + std * torch.randn(param.data.size()).to(device))
 
-#     heal_loader = torch.utils.data.DataLoader(
-#         other_samples, batch_size=128, shuffle=True
-#     )
-#     _ = fit_one_unlearning_cycle(
-#         1, model, heal_loader, device=device, lr=0.0001
-#     )
-
-#     return model
+    return model
