@@ -42,4 +42,4 @@ train_params:
   use_param_norm: True
   max_norm: 20
   pretrained: True
-runs_per_forget_set: 1
+runs_per_forget_set: 10
