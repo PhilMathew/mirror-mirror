@@ -212,7 +212,8 @@ def run_unlearning(
                 dampening_constant=unlearning_params['dampening_constant'],
                 selection_weighting=unlearning_params['selection_weighting'],
                 device=device,
-                batch_size=batch_size
+                batch_size=batch_size,
+                num_workers=num_workers
             )
         case 'fisher_forgetting':
             unlearned_model = run_fisher_forgetting(
@@ -237,7 +238,8 @@ def run_unlearning(
                 unlearning_teacher=unlearning_teacher,
                 forget_ds=forget_ds,
                 retain_ds=retain_ds,
-                device=device
+                device=device,
+                
             )
         case 'certified_removal':
             unlearned_model = run_certified_removal(

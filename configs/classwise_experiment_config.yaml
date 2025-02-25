@@ -18,18 +18,17 @@ distinguisher_params:
   kld: 
     perturbation_type: gaussian
   mse: null
-  consistency:
-    perturbation_type: gaussian
-  randomness:
-    perturbation_type: gaussian
 unlearning_methods:
   ssd:
     dampening_constant: 1
-    selection_weighting: 5
+    selection_weighting: 100
   bad_teacher: null
   amnesiac: null
-batch_size: 256
+batch_size: 512
 train_params:
   num_epochs: 50
-  learning_rate: 0.001
+  learning_rate: 1.e-2
+  num_workers: 0
+  pretrained: False
+  use_param_norm: False
 runs_per_forget_set: 10

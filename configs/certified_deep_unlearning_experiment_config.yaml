@@ -41,5 +41,5 @@ train_params:
   num_workers: 0
   use_param_norm: True
   max_norm: 20
-  pretrained: True
+  pretrained: False
 runs_per_forget_set: 10
