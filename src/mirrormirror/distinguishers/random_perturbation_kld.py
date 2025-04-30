@@ -13,7 +13,7 @@ from torch.utils.data import Subset, Dataset, DataLoader
 import torchattacks
 from sklearn.svm import OneClassSVM
 
-from components.datasets import CIFAR_MEAN, CIFAR_STD
+from ..components.datasets import CIFAR_MEAN, CIFAR_STD
 
 
 class RandomPerturbationDataset(Dataset):

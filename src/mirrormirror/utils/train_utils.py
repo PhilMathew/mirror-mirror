@@ -9,7 +9,7 @@ from tqdm import tqdm
 from opacus import PrivacyEngine
 from opacus.utils.batch_memory_manager import BatchMemoryManager
 
-from components.certified_removal import ovr_lr_optimize, onehot, L2NormLayer
+from ..components.certified_removal import ovr_lr_optimize, onehot, L2NormLayer
 
 
 # From https://github.com/if-loops/selective-synaptic-dampening.git

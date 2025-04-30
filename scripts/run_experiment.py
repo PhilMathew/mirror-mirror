@@ -17,16 +17,16 @@ import plotly.express as px
 import numpy as np
 import copy
 
-from components.datasets import init_full_ds
-from components.resnet import build_resnet18
-from components.certified_removal import L2NormLayer
-from distinguishers.logreg_mia import run_logreg_mia
-from distinguishers.random_perturbation_kld import compute_kld_over_perturbations, compute_svm_consistency
-from distinguishers.mse_score import calc_mse_score
-from distinguishers.randomness_score import compute_model_randomness
-from unlearning_frameworks.unlearning_methods import *
-from utils.plot_utils import plot_confmat, plot_history
-from utils.train_utils import test_model, train_model, add_cr_mechanism
+from mirrormirror.components.datasets import init_full_ds
+from mirrormirror.components.resnet import build_resnet18
+from mirrormirror.components.certified_removal import L2NormLayer
+from mirrormirror.distinguishers.logreg_mia import run_logreg_mia
+from mirrormirror.distinguishers.random_perturbation_kld import compute_kld_over_perturbations, compute_svm_consistency
+from mirrormirror.distinguishers.mse_score import calc_mse_score
+from mirrormirror.distinguishers.randomness_score import compute_model_randomness
+from mirrormirror.unlearning_frameworks.unlearning_methods import *
+from mirrormirror.utils.plot_utils import plot_confmat, plot_history
+from mirrormirror.utils.train_utils import test_model, train_model, add_cr_mechanism
 
 
 def select_device() -> torch.device:

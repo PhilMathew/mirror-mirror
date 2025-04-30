@@ -13,9 +13,10 @@ import numpy as np
 from torch.nn.utils import clip_grad_norm_
 from opacus import PrivacyEngine
 
-from components.certified_removal import *
-from .selective_synaptic_dampening.src import ssd
-from .certified_deep_unlearning.unlearn import grad_batch, newton_update
+from ..components.certified_removal import *
+## External githubs
+# from selective_synaptic_dampening.src import ssd
+# from certified_deep_unlearning.unlearn import grad_batch, newton_update
 import time
 
 
