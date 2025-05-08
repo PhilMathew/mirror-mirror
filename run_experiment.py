@@ -202,7 +202,6 @@ def run_unlearning(
         original_model.prefc_norm = L2NormLayer()
         original_model.fc = nn.Linear(original_model.fc.in_features, original_model.fc.out_features, bias=False)
     original_model.load_state_dict(orig_model_weights)
-    
     match unlearning_method:
         case 'ssd':
             unlearned_model = run_ssd(
@@ -267,8 +266,7 @@ def run_unlearning(
             ) 
         case _:
             raise ValueError(f'"{unlearning_method}" is an unknown unlearning method')
-        
-    unlearned_model_dir = output_dir / unlearning_method
+    unlearned_model_dir = output_dir    
     unlearned_model_dir.mkdir(exist_ok=True)
     torch.save(unlearned_model.state_dict(), str(unlearned_model_dir / f'{unlearning_method}_state_dict.pt'))
     eval_model_performance(
@@ -475,7 +473,7 @@ def main():
     # Iterate over all the desired forget sets
     score_dicts = {d: {k: [] for k in ('forget_set', 'run_number', 'model', 'score')} for d in distinguisher_params.keys()}
     for forget_set_ind, class_to_forget in enumerate(dataset_params['forget_sets']):
-        for run_num in range(config_dict['runs_per_forget_set']):
+        for run_num in range(config_dict['runs_per_experiment']):
             # We have to reload the original model the unlearning methods appear to act in place
             original_model.load_state_dict(torch.load(str(original_state_dict_path)))
             if isinstance(dataset_params['forget_set_size'], list):
@@ -483,7 +481,7 @@ def main():
             else:
                 num_forget = dataset_params['forget_set_size'] if class_to_forget == 'random' else None
             forget_set_name = f'forget_{class_to_forget}{f"_{num_forget}" if num_forget is not None else ""}'
-            print(f'Forget set: {forget_set_name}, Run number: {run_num}')
+            print(f'Forget Set Size: {forget_set_name}, Run number: {run_num}')
             
             # Create the directory to store everything under
             curr_output_dir = output_dir / forget_set_name / f'run_{run_num}'
@@ -535,8 +533,11 @@ def main():
             
             models_to_score = {'control': control_model.cpu()}
             # Get unlearned models for each unlearning method
-            for unlearning_method, unlearning_params in unlearning_methods.items():
-                unlearned_model_ckpt = curr_output_dir / unlearning_method / f'{unlearning_method}_state_dict.pt'
+            for unlearning_method_key, unlearning_params in unlearning_methods.items():
+                unlearning_method = unlearning_method_key.split('.')[0]
+                unlearned_model_dir = curr_output_dir / unlearning_method_key
+                unlearned_model_ckpt = unlearned_model_dir / f'{unlearning_method}_state_dict.pt'
+                print(f'Running {unlearning_method_key}')
                 if not args.redo_unlearning and args.use_existing_models and unlearned_model_ckpt.exists():
                     unlearned_model = build_resnet18(
                         num_classes, 
@@ -577,12 +578,12 @@ def main():
                             in_channels=in_channels,
                             batch_size=config_dict['batch_size'],
                             device=device,
-                            output_dir=curr_output_dir,
+                            output_dir=unlearned_model_dir,
                             **train_params,
                         )
                 
                 # Load the model onto CPU
-                models_to_score[unlearning_method] = unlearned_model
+                models_to_score[unlearning_method_key] = unlearned_model
                 
                 # We have to reload the original model the unlearning methods appear to act in place
                 original_model.load_state_dict(torch.load(str(original_state_dict_path), weights_only=True))
@@ -604,16 +605,16 @@ def main():
                         distinguisher_params=curr_distinguisher_params,
                         num_workers=train_params['num_workers'],
                     )
-                    
                     score_dicts[distinguisher]['forget_set'].append(forget_set_name[len("forget_"):])
                     score_dicts[distinguisher]['run_number'].append(run_num)
                     score_dicts[distinguisher]['model'].append(model_name)
                     score_dicts[distinguisher]['score'].append(score)
     
-        # Save the resulting scores from each distinguisher into a separate CSV
-        for distinguisher, score_dict in score_dicts.items():
-            score_df = pd.DataFrame(score_dict)
-            score_df.to_csv(str(output_dir / f'{distinguisher}_results.csv'), index=False)
+            # Save the resulting scores from each distinguisher into a separate CSV
+            for distinguisher, score_dict in score_dicts.items():
+                print('Saving out the results')
+                score_df = pd.DataFrame(score_dict)
+                score_df.to_csv(str(output_dir / f'{distinguisher}_results.csv'), index=False)
 
 
 if __name__ == "__main__":

@@ -8,8 +8,6 @@ dataset_params:
     - 'random'
     - 'random'
     - 'random'
-    - 'random'
-    - 'random'
   forget_set_size: 
     - 3
     - 6
@@ -18,8 +16,6 @@ dataset_params:
     - 300
     - 600
     - 3000
-    - 6000
-    - 15000
 distinguisher_params:
   mia:
     mia_type: logreg
@@ -34,12 +30,12 @@ unlearning_methods:
     gamma: 2000
     scale: 50000
     std: 1.e-3
-batch_size: 512
+batch_size: 1024
 train_params:
   num_epochs: 50
   learning_rate: 1.e-2
-  num_workers: 0
+  num_workers: 16
   use_param_norm: True
   max_norm: 20
   pretrained: False
-runs_per_forget_set: 10
+runs_per_experiment: 128
