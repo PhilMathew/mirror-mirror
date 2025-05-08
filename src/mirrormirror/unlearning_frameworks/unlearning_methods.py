@@ -17,6 +17,9 @@ from ..components.certified_removal import *
 ## External githubs
 # from selective_synaptic_dampening.src import ssd
 # from certified_deep_unlearning.unlearn import grad_batch, newton_update
+from components.certified_removal import *
+# from .selective_synaptic_dampening.src import ssd
+# from ..certified_deep_unlearning.unlearn import grad_batch, newton_update
 import time
 
 
