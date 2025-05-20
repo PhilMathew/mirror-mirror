@@ -7,3 +7,8 @@ saved_plots
 mirror_mirror.egg-info
 good_dp
 default_dp_sgd
+scripts/finetuned_model
+scripts/wandb
+wandb
+images
+paper
