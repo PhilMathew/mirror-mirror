@@ -1,0 +1,37 @@
+dataset_params:
+  dataset_name: Imagenette
+  forget_sets:
+    - 'random'
+    - 'random'
+    - 'random'
+    - 'random'
+  forget_set_size: 
+    - 10
+    - 100
+    - 1000
+    - 10000
+distinguisher_params:
+  mia:
+    mia_type: logreg
+  kld: 
+    perturbation_type: gaussian
+  mse: null
+  consistency:
+    perturbation_type: gaussian
+  randomness:
+    perturbation_type: gaussian
+unlearning_methods:
+  ssd:
+    dampening_constant: 1
+    selection_weighting: 100
+  bad_teacher: null
+  amnesiac: null
+batch_size: 512
+train_params:
+  model_type: resnet18
+  num_epochs: 200
+  learning_rate: 1.e-3
+  num_workers: 4
+  pretrained: False
+  use_param_norm: False
+runs_per_experiment: 1

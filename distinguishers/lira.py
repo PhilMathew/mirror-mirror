@@ -10,7 +10,7 @@ from torch import nn
 from torch.nn import functional as F
 from torch.utils.data import Subset, Dataset
 
-from components.resnet import build_resnet50
+from components.models import build_resnet50
 from utils.train_utils import train_model
 
 
