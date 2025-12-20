@@ -7,7 +7,7 @@ from typing import *
 import pandas as pd
 import torch
 import yaml
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import confusion_matrix, roc_curve
 from torch import nn
 from torch.nn import functional as F
 from torch.utils.data import DataLoader, Dataset, Subset
@@ -18,7 +18,7 @@ import numpy as np
 import copy
 
 from components.datasets import init_full_ds
-from components.resnet import build_resnet18
+from components.models import build_model
 from components.certified_removal import L2NormLayer
 from distinguishers.logreg_mia import run_logreg_mia
 from distinguishers.random_perturbation_kld import compute_kld_over_perturbations, compute_svm_consistency
@@ -107,7 +107,7 @@ def eval_model_performance(
 ):
     model_dir.mkdir(parents=True, exist_ok=True)
     
-    test_loss, test_acc, curr_preds, curr_labels = test_model(
+    test_loss, test_acc, curr_pred_probs, curr_preds, curr_labels,  = test_model(
         model,
         test_ds, 
         device, 
@@ -123,11 +123,13 @@ def eval_model_performance(
         save_path=str(model_dir / 'confmat.png'), 
         title=f'Loss: {test_loss:.4f}, Accuracy: {100 * test_acc:.4f}%'
     )
+    
+    return test_loss, test_acc, curr_pred_probs, curr_preds, curr_labels
 
 
 def train_single_model(
+    model_type: str,
     train_ds: Dataset,
-    test_ds: Dataset,
     num_classes: int,
     in_channels: int,
     batch_size: int,
@@ -137,11 +139,13 @@ def train_single_model(
     model_name: str,
     output_dir: Path,
     use_differential_privacy: bool = False,
+    test_ds: Optional[Dataset] = None,
     **kwargs
 ) -> nn.Module:
-    model = build_resnet18(
-        num_classes, 
-        in_channels, 
+    model = build_model(
+        model_type=model_type,
+        num_classes=num_classes, 
+        in_channels=in_channels,
         pretrained=kwargs.get('pretrained', True), 
         use_differential_privacy=use_differential_privacy
     )
@@ -168,7 +172,8 @@ def train_single_model(
         plot_history(train_hist, str(model_dir / f'{model_name}_train_hist.png')) # train history plots
     num_workers = kwargs.get('num_workers', 16)
     # Evaluate performance
-    eval_model_performance(model, test_ds, device, batch_size, model_dir, num_workers, p_bar_desc=f'Testing {model_name} model')
+    if test_ds is not None:
+        eval_model_performance(model, test_ds, device, batch_size, model_dir, num_workers, p_bar_desc=f'Testing {model_name} model')
     
     return model
 
@@ -181,24 +186,26 @@ def run_unlearning(
     forget_inds: List[int],
     full_train_ds: Dataset,
     retain_ds: Dataset,
-    test_ds: Dataset,
     num_classes: int,
     in_channels: int,
     batch_size: int,
     device: torch.device,
     output_dir: Path,
     num_workers: int,
+    test_ds: Optional[Dataset] = None,
     **kwargs
 ) -> nn.Module:
     # To ensure the original model is not modified during unlearning, we create a copy
     orig_model_weights = copy.deepcopy(original_model.state_dict())
-    original_model = build_resnet18(
+    original_model = build_model(
+        model_type=kwargs.get('model_type'),
         num_classes=num_classes,
         in_channels=in_channels,
         pretrained=False,
         use_differential_privacy=kwargs.get('use_differential_privacy', False)
     )
     if unlearning_method == 'certified_removal':
+        assert 'resnet' in kwargs.get('model_type'), 'Certified removal only works with ResNet models'
         original_model.prefc_norm = L2NormLayer()
         original_model.fc = nn.Linear(original_model.fc.in_features, original_model.fc.out_features, bias=False)
     original_model.load_state_dict(orig_model_weights)
@@ -228,10 +235,13 @@ def run_unlearning(
                 retain_ds=retain_ds,
                 device=device,
                 num_classes=num_classes,
-                forget_class=forget_ds[0][-1]
             )
         case 'bad_teacher':
-            unlearning_teacher = build_resnet18(num_classes, in_channels).to(device)
+            unlearning_teacher = build_model(
+                model_type=kwargs.get('model_type'), 
+                num_classes=num_classes, 
+                in_channels=in_channels
+            ).to(device)
             unlearned_model = run_bad_teacher(
                 model=original_model,
                 unlearning_teacher=unlearning_teacher,
@@ -269,15 +279,16 @@ def run_unlearning(
     unlearned_model_dir = output_dir    
     unlearned_model_dir.mkdir(exist_ok=True)
     torch.save(unlearned_model.state_dict(), str(unlearned_model_dir / f'{unlearning_method}_state_dict.pt'))
-    eval_model_performance(
-        model=unlearned_model,
-        test_ds=test_ds,
-        device=device,
-        batch_size=batch_size,
-        model_dir=unlearned_model_dir,
-        num_workers=num_workers,
-        p_bar_desc=f'Testing unlearned model ({unlearning_method})'
-    )
+    if test_ds is not None:    
+        eval_model_performance(
+            model=unlearned_model,
+            test_ds=test_ds,
+            device=device,
+            batch_size=batch_size,
+            model_dir=unlearned_model_dir,
+            num_workers=num_workers,
+            p_bar_desc=f'Testing unlearned model ({unlearning_method})'
+        )
     
     return unlearned_model
 
@@ -286,6 +297,7 @@ def compute_distinguisher_score(
     distinguisher: str,
     candidate_model: nn.Module,
     original_model: nn.Module,
+    num_classes: int,
     forget_ds: Dataset,
     retain_ds: Dataset,
     test_ds: Dataset,
@@ -361,6 +373,7 @@ def compute_distinguisher_score(
             distinguisher_score = compute_model_randomness(
                 candidate_model=candidate_model, 
                 original_model=original_model,
+                num_classes=num_classes,
                 dataset=forget_ds,
                 perturbation_fn=perturbation_fn,
                 seed=0,
@@ -404,11 +417,13 @@ def main():
     full_train_ds, test_ds, num_classes, in_channels = init_full_ds(dataset_params['dataset_name'])
     # We make a second copy of the training set with random augmentations applied, which we use for training
     full_train_ds_random_aug, _, _, _ = init_full_ds(dataset_params['dataset_name'], use_random_train_aug=True)
+    
     original_state_dict_path = output_dir / 'original' / 'original_state_dict.pt'
     if args.use_existing_models and original_state_dict_path.exists():
-        original_model = build_resnet18(
-            num_classes, 
-            in_channels,
+        original_model = build_model(
+            model_type=train_params['model_type'],
+            num_classes=num_classes, 
+            in_channels=in_channels,
             pretrained=False, # we're loading in weights anyway
             use_differential_privacy=train_params.get('use_differential_privacy', False)
         )
@@ -432,16 +447,18 @@ def main():
     # Add a certified removal mechanism if necessary
     if train_params.get('use_certified_removal', False): 
         assert train_params['use_differential_privacy'], 'Certified removal requires a DP model as the feature extractor'
+        assert 'resnet' in train_params['model_type'], 'Certified removal only works with ResNet models'
         original_state_dict_path = output_dir / 'original' / f'original_cr_state_dict.pt'
         
         print('Adding certified removal mechanism to the original model')
         print('NOTE: THIS WILL NOT PLAY NICE IF OTHER UNLEARNING METHODS ARE USED')
         if args.use_existing_models and original_state_dict_path.exists():
-            original_model = build_resnet18(
-                num_classes, 
-                in_channels,
-                pretrained=False, # loading in new weights anyway
-                use_differential_privacy=train_params['use_differential_privacy']
+            original_model = build_model(
+                model_type=train_params['model_type'],
+                num_classes=num_classes, 
+                in_channels=in_channels,
+                pretrained=False, # we're loading in weights anyway
+                use_differential_privacy=train_params.get('use_differential_privacy', False)
             )
             
             original_model.prefc_norm = L2NormLayer() # CR uses an L2 norm prior to the final layer
@@ -473,11 +490,13 @@ def main():
     # Iterate over all the desired forget sets
     score_dicts = {d: {k: [] for k in ('forget_set', 'run_number', 'model', 'score')} for d in distinguisher_params.keys()}
     for forget_set_ind, class_to_forget in enumerate(dataset_params['forget_sets']):
-        for run_num in range(config_dict['runs_per_experiment']):
+        for run_num in range(config_dict['runs_per_forget_set']):
             # We have to reload the original model the unlearning methods appear to act in place
             original_model.load_state_dict(torch.load(str(original_state_dict_path)))
             if isinstance(dataset_params['forget_set_size'], list):
                 num_forget = dataset_params['forget_set_size'][forget_set_ind]
+            elif isinstance(dataset_params.get('poison_rate', None), list):
+                num_forget = dataset_params.get('poison_rate', None)[forget_set_ind]
             else:
                 num_forget = dataset_params['forget_set_size'] if class_to_forget == 'random' else None
             forget_set_name = f'forget_{class_to_forget}{f"_{num_forget}" if num_forget is not None else ""}'
@@ -508,10 +527,11 @@ def main():
             
             # Train the control model
             if args.use_existing_models and (curr_output_dir / 'control' / 'control_state_dict.pt').exists():
-                control_model = build_resnet18(
-                    num_classes, 
-                    in_channels,
-                    pretrained=False, # loading new weights anyway
+                control_model = build_model(
+                    model_type=train_params['model_type'],
+                    num_classes=num_classes, 
+                    in_channels=in_channels,
+                    pretrained=False, # we're loading in weights anyway
                     use_differential_privacy=train_params.get('use_differential_privacy', False)
                 )
                 control_model.load_state_dict(torch.load(str(curr_output_dir / 'control' / 'control_state_dict.pt'), weights_only=True))
@@ -539,10 +559,11 @@ def main():
                 unlearned_model_ckpt = unlearned_model_dir / f'{unlearning_method}_state_dict.pt'
                 print(f'Running {unlearning_method_key}')
                 if not args.redo_unlearning and args.use_existing_models and unlearned_model_ckpt.exists():
-                    unlearned_model = build_resnet18(
-                        num_classes, 
-                        in_channels,
-                        pretrained=False, # loading new weights anyway
+                    unlearned_model = build_model(
+                        model_type=train_params['model_type'],
+                        num_classes=num_classes, 
+                        in_channels=in_channels,
+                        pretrained=False, # we're loading in weights anyway
                         use_differential_privacy=train_params.get('use_differential_privacy', False)
                     )
                     if unlearning_method == 'certified_removal':
@@ -597,6 +618,7 @@ def main():
                         distinguisher=distinguisher,
                         candidate_model=model,
                         original_model=original_model,
+                        num_classes=num_classes,
                         forget_ds=forget_ds,
                         retain_ds=retain_ds,
                         test_ds=test_ds,

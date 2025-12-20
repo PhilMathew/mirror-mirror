@@ -22,7 +22,7 @@ def collect_prob(dataset, model, batch_size, device):
     model = model.to(device)
     model = model.eval()
     data_loader = torch.utils.data.DataLoader(
-        dataset, batch_size=batch_size, shuffle=False
+        dataset, batch_size=batch_size, shuffle=False, num_workers=16
     )
     prob = []
     with torch.no_grad():

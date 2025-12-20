@@ -20,6 +20,7 @@ def compute_model_randomness(
     candidate_model: nn.Module, 
     original_model: nn.Module, 
     dataset: Dataset,
+    num_classes: int,
     perturbation_fn: Callable[[torch.Tensor], torch.Tensor], 
     seed: int, 
     device: torch.device, 
@@ -30,9 +31,6 @@ def compute_model_randomness(
     original_model = original_model.to(device)
     candidate_model.eval()
     original_model.eval()
-
-    # Get number of classes based on model output label
-    num_classes = candidate_model.fc.weight.shape[0] # taking advantage of knowing ResNet's layer names here
     
     dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers)
     

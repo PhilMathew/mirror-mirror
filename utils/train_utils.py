@@ -71,7 +71,10 @@ def _train_step(
         # Metrics calculation
         train_loss += loss.item()
         train_acc += (torch.sum(F.softmax(preds, dim=-1).argmax(dim=-1) == labels) / labels.shape[0]).item()
-    postfix_str = f'Train Loss: {train_loss / (i + 1):.4f}, Train Accuracy: {100 * train_acc / (i + 1):.4f}%'
+    try:
+        postfix_str = f'Train Loss: {train_loss / (i + 1):.4f}, Train Accuracy: {100 * train_acc / (i + 1):.4f}%'
+    except Exception as e:
+        breakpoint()
     p_bar.set_postfix_str(postfix_str)
     p_bar.update()
 
@@ -212,7 +215,7 @@ def test_model(
     num_workers: int = 16, 
     p_bar_desc: str = 'Testing Model',
     return_preds_and_labels : bool = False
-) -> Union[Tuple[float, float, torch.Tensor, torch.Tensor], Tuple[float, float]]:
+) -> Union[Tuple[float, float, torch.Tensor, torch.Tensor, torch.Tensor], Tuple[float, float]]:
     """
     Tests a PyTorch model on a given dataset.
 
@@ -230,8 +233,8 @@ def test_model(
     :type p_bar_desc: str, optional
     :param return_preds_and_labels: Whether to return predictions and labels, defaults to False
     :type return_preds_and_labels: bool, optional
-    :return: Either loss and accuracy, or loss, accuracy, predictions, and labels if return_preds_and_labels is True
-    :rtype: Union[Tuple[float, float, torch.Tensor, torch.Tensor], Tuple[float, float]]
+    :return: Either loss and accuracy, or loss, accuracy, prediction probabilities, predictions, and labels if return_preds_and_labels is True
+    :rtype: Union[Tuple[float, float, torch.Tensor, torch.Tensor, torch.Tensor], Tuple[float, float]]
     """
     model = model.to(device)
     model.eval()
@@ -240,7 +243,7 @@ def test_model(
     
     with torch.no_grad():
         test_loss = 0
-        all_preds, all_labels = [], []
+        all_preds, all_pred_probs, all_labels = [], [], []
         for batch in tqdm(test_dl, desc=p_bar_desc):
             
             # Sorting out data
@@ -255,16 +258,19 @@ def test_model(
             test_loss += loss.item()
             
             # Update running collections of things
-            preds = F.softmax(preds, dim=-1).argmax(dim=-1)
-            all_preds.append(preds.cpu())
+            pred_probs = F.softmax(preds, dim=-1)
+            pred_labels = pred_probs.argmax(dim=-1)
+            all_pred_probs.append(pred_probs.cpu())
+            all_preds.append(pred_labels.cpu())
             all_labels.append(labels.cpu())
-            
+        
+        all_pred_probs = torch.cat(all_pred_probs, dim=0)
         all_preds = torch.cat(all_preds)
         all_labels = torch.cat(all_labels)
         test_loss /= len(test_dl)
-        test_acc = torch.sum(all_preds == all_labels) / len(test_ds)
+        test_acc = (torch.sum(all_preds == all_labels) / len(test_ds)).item()
 
-    return (test_loss, test_acc, all_preds, all_labels) if return_preds_and_labels else (test_loss, test_acc)
+    return (test_loss, test_acc, all_pred_probs, all_preds, all_labels) if return_preds_and_labels else (test_loss, test_acc)
 
 
 def add_cr_mechanism(

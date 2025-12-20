@@ -2,6 +2,7 @@
 import random
 from typing import *
 from copy import deepcopy
+import yaml
 
 import torch.utils
 from tqdm import tqdm
@@ -213,7 +214,6 @@ def run_amnesiac(
     retain_ds,
     forget_ds,
     num_classes,
-    forget_class,
     device
 ):
     model = deepcopy(model)
@@ -222,10 +222,11 @@ def run_amnesiac(
     unlearning_labels = list(range(num_classes))
     unlearning_trainset = []
 
-    unlearning_labels.remove(forget_class)
-
     for x, clabel in forget_ds:
-        unlearning_trainset.append((x, random.choice(unlearning_labels)))
+        rnd = random.choice(unlearning_labels)
+        while rnd == clabel:
+            rnd = random.choice(unlearning_labels)
+        unlearning_trainset.append((x, rnd))
 
     for x, clabel in retain_ds:
         unlearning_trainset.append((x, clabel))
@@ -535,3 +536,30 @@ def run_certified_deep_unlearning(
         param.data.add_(-delta[i] + std * torch.randn(param.data.size()).to(device))
 
     return model
+
+
+def run_grad_ascent(
+    model,
+    retain_ds,
+    forget_ds,
+    num_classes,
+    forget_class,
+    device,
+    batch_size: int = 256,
+    num_workers: int = 16
+) -> nn.Module:
+    retain_dl = DataLoader(retain_ds, batch_size=batch_size, num_workers=num_workers)
+    forget_dl = DataLoader(forget_ds, batch_size=batch_size, num_workers=num_workers)
+    config = yaml.load('OpenUnlearn/configs/unlearners.yaml')
+    
+    unlearned_model, _, _ = Unlearner(
+        method='GA', 
+        model=model, 
+        retain_loader=retain_ds, 
+        forget_loader=forget_ds, 
+        val_loader=None, 
+        config=config, 
+        device=device
+    )
+    
+    return unlearned_model
