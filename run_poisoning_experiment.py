@@ -55,9 +55,9 @@ def get_clean_and_poisoned_evals(
     
     # Get ROC curve
     fpr, tpr, thresholds = roc_curve(poison_labels, poison_pred_probs[:, 0], pos_label=0) # mapping poisoned examples to label 0, thus making it the positive label
-    tpr_at_1_fpr = tpr[np.argmin(np.abs(fpr - 0.01))] # finds the index of the closest FPR to 0.01 and returns the corresponding TPR
-    
-    return clean_loss, clean_acc, poison_loss, poison_acc, tpr_at_1_fpr
+    tpr_at_low_fpr = tpr[np.argmin(np.abs(fpr - 0.01))] # finds the index of the closest FPR to 0.01 and returns the corresponding TPR
+    # breakpoint()
+    return clean_loss, clean_acc, poison_loss, poison_acc, tpr_at_low_fpr
 
 
 def create_original_model(

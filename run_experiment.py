@@ -24,7 +24,7 @@ from distinguishers.logreg_mia import run_logreg_mia
 from distinguishers.random_perturbation_kld import compute_kld_over_perturbations, compute_svm_consistency
 from distinguishers.mse_score import calc_mse_score
 from distinguishers.randomness_score import compute_model_randomness
-from unlearning_frameworks.unlearning_methods import *
+from components.unlearning_methods import *
 from utils.plot_utils import plot_confmat, plot_history
 from utils.train_utils import test_model, train_model, add_cr_mechanism
 
@@ -273,7 +273,34 @@ def run_unlearning(
                 device=device,
                 batch_size=batch_size,
                 num_workers=num_workers
-            ) 
+            )
+        case 'grad_ascent':
+            unlearned_model = run_grad_ascent(
+                model=original_model,
+                forget_ds=forget_ds,
+                device=device,
+                lr=unlearning_params['lr'],
+                weight_decay=unlearning_params['weight_decay'],
+                momentum=unlearning_params['momentum'],
+                epochs=unlearning_params['epochs'],
+                batch_size=batch_size,
+                num_workers=num_workers
+            )
+        case 'scrub':
+            unlearned_model = run_scrub(
+                model=original_model,
+                forget_ds=forget_ds,
+                retain_ds=retain_ds,
+                alpha=unlearning_params['alpha'],
+                beta=unlearning_params['beta'],
+                lr=unlearning_params['lr'],
+                epochs=unlearning_params['epochs'],
+                momentum=unlearning_params['momentum'],
+                weight_decay=unlearning_params['weight_decay'],
+                batch_size=batch_size,
+                num_workers=num_workers,
+                device=device,
+            )
         case _:
             raise ValueError(f'"{unlearning_method}" is an unknown unlearning method')
     unlearned_model_dir = output_dir    
@@ -337,7 +364,7 @@ def compute_distinguisher_score(
                 seed=0,
                 device=device,
                 batch_size=batch_size,
-                num_workers=num_workers
+                num_workers=0 # Got weird pickle errors otherwise
             )
         case 'consistency':
             match distinguisher_params['perturbation_type']:

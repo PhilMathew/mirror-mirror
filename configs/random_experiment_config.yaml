@@ -11,15 +11,10 @@ dataset_params:
     - 'random'
     - 'random'
   forget_set_size: 
-    - 3
-    - 6
-    - 30
-    - 60
-    - 300
-    - 600
-    - 3000
-    - 6000
-    - 15000
+    - 10
+    - 100
+    - 1000
+    - 10000
 distinguisher_params:
   mia:
     mia_type: logreg
@@ -43,4 +38,5 @@ train_params:
   num_workers: 0
   pretrained: False
   use_param_norm: False
+  model_type: resnet18
 runs_per_forget_set: 64

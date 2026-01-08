@@ -1,6 +1,6 @@
 dataset_params:
   dataset_name: CIFAR10
-  poison_type: badnets
+  poison_type: gaussian
   poison_rate: 
     - 0.1
     - 0.2
@@ -40,7 +40,7 @@ batch_size: 512
 train_params:
   num_epochs: 50
   learning_rate: 1.e-2
-  num_workers: 8
+  num_workers: 0
   pretrained: False
   use_param_norm: False
   model_type: resnet18

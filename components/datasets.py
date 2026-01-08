@@ -5,6 +5,7 @@ from torch.utils.data import Dataset
 from BackdoorBox.core.attacks.BadNets import CreatePoisonedDataset as poison_with_badnets
 from BackdoorBox.core.attacks.WaNet import CreatePoisonedDataset as poison_with_wanet
 import torch
+import random
 
 
 CIFAR_MEAN, CIFAR_STD = (0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010) # Improves model performance (https://github.com/kuangliu/pytorch-cifar/blob/master/main.py)
@@ -163,6 +164,29 @@ def init_full_ds(ds_type: str, use_random_train_aug: bool = False, do_poison: bo
     
     return train_ds, test_ds, num_classes, in_channels
 
+# Based on https://arxiv.org/abs/2406.17216
+class GaussianPoisonDataset(Dataset):
+    def __init__(self, benign_dataset, target_label, poison_rate, poison_std):
+        super(GaussianPoisonDataset, self).__init__()
+        self.benign_dataset = benign_dataset
+        self.target_label = target_label
+        self.poison_rate = poison_rate
+        self.poison_std = poison_std
+        
+        # Set up list of indices for poisoned samples
+        self.poisoned_set = random.sample(list(range(len(benign_dataset))), k=int(len(benign_dataset) * poison_rate))
+    
+    def __len__(self):
+        return len(self.benign_dataset)
+    
+    def __getitem__(self, index):
+        x, y = self.benign_dataset[index]
+        if index in self.poisoned_set:
+            x = x + torch.randn_like(x) * self.poison_std
+            y = self.target_label
+        
+        return x, y
+
 
 def gen_grid(height, k): # from https://github.com/THUYimingLi/BackdoorBox/blob/main/tests/test_WaNet.py
     """Generate an identity grid with shape 1*height*height*2 and a noise grid with shape 1*height*height*2
@@ -203,6 +227,13 @@ def poison_dataset(orig_ds: Dataset, target_label: int, poison_rate: float, pois
                 noise=False,
                 poisoned_transform_index=0,
                 poisoned_target_transform_index=0
+            )
+        case 'gaussian':
+            poisoned_ds = GaussianPoisonDataset(
+                benign_dataset=orig_ds,
+                target_label=target_label,
+                poison_rate=poison_rate,
+                poison_std=0.25  # standard deviation of Gaussian noise
             )
         case _:
             raise ValueError(f'{poison_type} is an invalid poison type')

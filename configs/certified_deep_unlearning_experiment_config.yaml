@@ -38,4 +38,5 @@ train_params:
   use_param_norm: True
   max_norm: 20
   pretrained: False
+  model_type: resnet18
 runs_per_experiment: 128

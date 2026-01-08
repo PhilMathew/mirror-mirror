@@ -22,7 +22,7 @@ def collect_prob(dataset, model, batch_size, device):
     model = model.to(device)
     model = model.eval()
     data_loader = torch.utils.data.DataLoader(
-        dataset, batch_size=batch_size, shuffle=False, num_workers=16
+        dataset, batch_size=batch_size, shuffle=False, num_workers=0
     )
     prob = []
     with torch.no_grad():
@@ -63,7 +63,7 @@ def get_membership_attack_prob(retain_ds, forget_ds, test_ds, candidate_model, o
     )
     # clf = SVC(C=3,gamma='auto',kernel='rbf')
     clf = LogisticRegression(
-        class_weight="balanced", solver="lbfgs", multi_class="multinomial"
+        class_weight="balanced", solver="lbfgs"
     )
     clf.fit(X_r, Y_r)
     results = clf.predict(X_f)

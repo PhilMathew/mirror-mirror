@@ -2,6 +2,7 @@
 import random
 from typing import *
 from copy import deepcopy
+from dataclasses import dataclass
 import yaml
 
 import torch.utils
@@ -15,8 +16,8 @@ from torch.nn.utils import clip_grad_norm_
 from opacus import PrivacyEngine
 
 from components.certified_removal import *
-from .selective_synaptic_dampening.src import ssd
-from .certified_deep_unlearning.unlearn import grad_batch, newton_update
+from unlearning_frameworks.selective_synaptic_dampening.src import ssd
+from unlearning_frameworks.certified_deep_unlearning.unlearn import grad_batch, newton_update
 import time
 
 
@@ -540,26 +541,339 @@ def run_certified_deep_unlearning(
 
 def run_grad_ascent(
     model,
-    retain_ds,
     forget_ds,
-    num_classes,
-    forget_class,
     device,
+    lr: float = 0.1,
+    weight_decay: float = 5e-4,
+    momentum: float = 0.9,
+    epochs: int = 5,
     batch_size: int = 256,
     num_workers: int = 16
 ) -> nn.Module:
-    retain_dl = DataLoader(retain_ds, batch_size=batch_size, num_workers=num_workers)
-    forget_dl = DataLoader(forget_ds, batch_size=batch_size, num_workers=num_workers)
-    config = yaml.load('OpenUnlearn/configs/unlearners.yaml')
+    forget_dl = DataLoader(forget_ds, batch_size=batch_size, num_workers=0)
+    print('NUM_WORKERS IS DISCARDED TO AVOID SLOWDOWNS, CHANGE THE CODE TO USE A VALID NUMBER OF WORKERS IF NECESSARY.')
     
-    unlearned_model, _, _ = Unlearner(
-        method='GA', 
-        model=model, 
-        retain_loader=retain_ds, 
-        forget_loader=forget_ds, 
-        val_loader=None, 
-        config=config, 
-        device=device
+    unlearned_model = deepcopy(model)
+    unlearned_model.to(device)
+    
+    optimizer = torch.optim.SGD(unlearned_model.parameters(), lr=lr, weight_decay=weight_decay, momentum=momentum)
+    loss_func = nn.CrossEntropyLoss().to(device)
+
+    for epoch in tqdm(range(1, epochs + 1), desc= "Gradient ascent unlearning"):
+        loss_list = []
+        for imgs, labels in forget_dl:
+            imgs, labels = imgs.to(device), labels.long().to(device)
+            unlearned_model.zero_grad()
+            output = unlearned_model(imgs)
+            # gradient ascent loss
+            loss = (-1) * loss_func(output, labels)
+            loss.backward()
+            optimizer.step()
+            loss_list.append(loss.item())
+
+    return unlearned_model
+
+
+# Adapted from https://github.com/MartinPawelczyk/OpenUnlearn.git
+def adjust_learning_rate_new(epoch, optimizer, LUT):
+    """
+    new learning rate schedule according to RotNet
+    """
+    lr = next((lr for (max_epoch, lr) in LUT if max_epoch > epoch), LUT[-1][1])
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = lr
+
+def sgda_adjust_learning_rate(epoch, opt, optimizer):
+    """Sets the learning rate to the initial LR decayed by decay rate every steep step"""
+    steps = np.sum(epoch > np.asarray(opt.lr_decay_epochs))
+    new_lr = opt.sgda_learning_rate
+    if steps > 0:
+        new_lr = opt.sgda_learning_rate * (opt.lr_decay_rate ** steps)
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = new_lr
+    return new_lr
+
+def param_dist(model, swa_model, p):
+    #This is from https://github.com/ojus1/SmoothedGradientDescentAscent/blob/main/SGDA.py
+    dist = 0.
+    for p1, p2 in zip(model.parameters(), swa_model.parameters()):
+        dist += torch.norm(p1 - p2, p='fro')
+    return p * dist
+
+class DistillKL(nn.Module):
+    """Distilling the Knowledge in a Neural Network"""
+    def __init__(self, T):
+        super(DistillKL, self).__init__()
+        self.T = T
+
+    def forward(self, y_s, y_t):
+        p_s = F.log_softmax(y_s/self.T, dim=1)
+        p_t = F.softmax(y_t/self.T, dim=1)
+        loss = F.kl_div(p_s, p_t, size_average=False) * (self.T**2) / y_s.shape[0]
+        return loss
+
+class AverageMeter(object):
+    """Computes and stores the average and current value"""
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
+
+    def update(self, val, n=1):
+        self.val = val
+        self.sum += val * n
+        self.count += n
+        self.avg = self.sum / self.count
+
+def l2_difference(model1, model2):
+    l2_diff = 0.0
+    # Ensure both models are in the same state (e.g., both in eval mode)
+    model1.eval()
+    model2.eval()
+
+    with torch.no_grad():
+        for (param1, param2) in zip(model1.parameters(), model2.parameters()):
+            # Check if both parameters are on the same device and are of the same shape
+            if param1.device != param2.device or param1.shape != param2.shape:
+                raise ValueError("Models have parameters on different devices or with different shapes")
+            
+            # Compute the squared L2 norm of the difference between the parameters
+            param_diff = param1 - param2
+            l2_diff += torch.norm(param_diff, p=2).item()**2
+
+    # Return the square root of the sum of squared differences
+    return l2_diff**0.5
+
+def compute_classification_loss(pred_scores: torch.tensor, labels: torch.tensor):
+    loss_fct = nn.CrossEntropyLoss()
+    lm_loss = loss_fct(pred_scores, labels.view(-1))
+    return lm_loss
+
+
+def train_distill(epoch, train_loader, module_list, swa_model, 
+                  criterion_list, optimizer, opt, split, quiet=False):
+    """One epoch distillation"""
+    # set modules as train()
+    for module in module_list:
+        module.train()
+    # set teacher as eval()
+    module_list[-1].eval()
+
+    criterion_cls = criterion_list[0]
+    criterion_div = criterion_list[1]
+    criterion_kd = criterion_list[2]
+
+    model_s = module_list[0]
+    model_t = module_list[-1]
+
+    batch_time = AverageMeter()
+    data_time = AverageMeter()
+    losses = AverageMeter()
+    kd_losses = AverageMeter()
+    top1 = AverageMeter()
+
+    # end = time.time()
+    for idx, data in enumerate(train_loader):
+        if isinstance(data, dict):
+            inputs = data['input_embeds'].to(opt.DEVICE)
+            attention_mask = data['attention_mask'].to(opt.DEVICE)
+            targets = data['label'].to(opt.DEVICE)
+        else:
+            inputs, targets = data
+            inputs, targets = inputs.to(opt.DEVICE), targets.to(opt.DEVICE)
+        # data_time.update(time.time() - end)
+        # inputs = inputs.float()
+        # ===================forward=====================
+        model_s = model_s.to(opt.DEVICE) 
+        model_t = model_t.to(opt.DEVICE) 
+        swa_model = swa_model.to(opt.DEVICE) 
+        if isinstance(data, dict):
+            logit_s = model_s(inputs_embeds=inputs, attention_mask=attention_mask).logits
+        else:
+            inputs = inputs.float()
+            logit_s = model_s(inputs)
+        with torch.no_grad():
+            if isinstance(data, dict):
+                logit_t = model_t(inputs_embeds=inputs, attention_mask=attention_mask).logits
+            else:
+                logit_t = model_t(inputs)
+        # cls + kl div
+        loss_cls = criterion_cls(logit_s, targets)
+        loss_div = criterion_div(logit_s, logit_t)
+        # other kd beyond KL divergence
+        if opt.distill == 'kd':
+            loss_kd = 0
+        else:
+            raise NotImplementedError(opt.distill)
+        if split == "minimize":
+            loss = (opt.gamma * loss_cls) + (opt.alpha * loss_div) + (opt.beta * loss_kd)
+        elif split == "maximize":
+            loss = -loss_div
+        loss = loss + param_dist(model_s, swa_model, opt.smoothing)
+        # ===================backward=====================
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        # ===================meters=====================
+        # batch_time.update(time.time() - end)
+        # end = time.time()
+    if split == "minimize":
+        return top1.avg, losses.avg
+    else:
+        return kd_losses.avg
+
+def scrub_loop(args,
+               optimizer,
+               model,
+               criterion_cls,
+               module_list,
+               swa_model,
+               criterion_list,
+               retain_loader,
+               forget_loader,
+               verbose=False):
+    maximize_loss = None
+
+    # print(f"total epochs : {args.sgda_epochs}")
+    for epoch in tqdm(range(1, args.sgda_epochs + 1), desc='Running SCRUB'):
+        # print(f"Epoch {epoch} ...")
+        lr = sgda_adjust_learning_rate(epoch, args, optimizer)
+        if verbose:
+            print("==> scrub unlearning ...")
+            print(f"validating - ")
+
+        maximize_loss = 0
+        if epoch <= args.msteps:
+            if verbose:
+                print(f"train distill 1")
+            # maximize loss on the forget set
+            maximize_loss = train_distill(epoch, forget_loader, module_list,
+                                          swa_model, criterion_list, optimizer,
+                                          args, 
+                                          "maximize")
+        if verbose:
+            print(f"train distill 2 :")
+        # minimize loss on the retain set
+        train_acc, train_loss = train_distill(epoch, retain_loader,
+                                              module_list, swa_model,
+                                              criterion_list, optimizer, args,
+                                              "minimize")
+
+        if epoch >= args.sstart:
+            # print("update params")
+            swa_model.update_parameters(model)
+
+        if verbose:
+            print(
+                "maximize loss: {:.2f}\t minimize loss: {:.2f}\t train_acc: {}"
+                .format(maximize_loss, train_loss, train_acc))
+        student = module_list[0]
+        teacher = module_list[-1]
+        # print(f"{epoch} -- difference between teacher and student - {l2_difference(student, teacher)}")
+
+    return model
+
+@dataclass
+class SCRUB_args:
+    alpha: float
+    beta: float
+    epochs: int
+    batch_size: int
+    lr: float
+    DEVICE: str
+    
+    noise_var: float = 0.000
+    lr_scheduler = None
+    gamma: float = 0.99
+    smoothing: float = 0.0
+    clip: float = 0.2
+    sstart: float = 10
+    kd_T: float = 4
+    distill: str = 'kd'
+    
+    lr_decay_epochs: tuple[int] = (3, 5, 9)
+    lr_decay_rate: float = 0.1
+    sgda_weight_decay: float = 5e-4
+    sgda_momentum: float = 0.9
+    
+    def __post_init__(self):
+        self.sgda_batch_size: int = self.batch_size
+        self.del_batch_size: int = self.batch_size
+        self.msteps: int = self.epochs
+        self.sgda_epochs: int = self.epochs
+        self.sgda_learning_rate: float = self.lr # 0.0005
+
+
+# SCRUB: https://github.com/meghdadk/SCRUB/tree/main
+def run_scrub(
+    model,
+    forget_ds,
+    retain_ds,
+    alpha,
+    beta,
+    lr,
+    epochs,
+    momentum,
+    weight_decay,
+    batch_size,
+    num_workers,
+    device,
+):
+    orig_model = deepcopy(model)
+    unlearned_model = deepcopy(model)
+    forget_dl = DataLoader(forget_ds, batch_size=batch_size, num_workers=0)
+    retain_dl = DataLoader(retain_ds, batch_size=batch_size, num_workers=0)
+    print('NUM_WORKERS IS DISCARDED TO AVOID SLOWDOWNS, CHANGE THE CODE TO USE A VALID NUMBER OF WORKERS IF NECESSARY.')
+    
+    module_list = nn.ModuleList([])
+    module_list.append(unlearned_model)  # student.
+    module_list.append(orig_model)   # teacher.
+    trainable_list = nn.ModuleList([])
+    trainable_list.append(unlearned_model)   
+    
+    args = SCRUB_args( # literally just so the existing SCRUB functions work
+        alpha=alpha,
+        beta=beta,
+        epochs=epochs,
+        batch_size=batch_size,
+        lr=lr,
+        DEVICE=device,
+    )
+    
+    optimizer = torch.optim.SGD(
+        trainable_list.parameters(),
+        lr=args.sgda_learning_rate,
+        momentum=args.sgda_momentum,
+        weight_decay=args.sgda_weight_decay
+    )
+
+    criterion_cls = nn.CrossEntropyLoss()
+    criterion_div = DistillKL(args.kd_T)
+    criterion_kd = DistillKL(args.kd_T)
+    criterion_list = nn.ModuleList([])
+    criterion_list.append(criterion_cls)  # classification loss
+    criterion_list.append(criterion_div)  # KL divergence loss, original knowledge distillation
+    criterion_list.append(criterion_kd)   # other knowledge distillation loss
+
+    def avg_fn(averaged_model_parameter, model_parameter, num_averaged):
+        return ((1 - beta) * averaged_model_parameter) + (beta * model_parameter)
+
+    # continue training using SCRUB on Retain set + Forget set
+    swa_model = torch.optim.swa_utils.AveragedModel(unlearned_model, avg_fn=avg_fn)
+    unlearned_model = scrub_loop(
+        args, 
+        optimizer, 
+        unlearned_model,
+        criterion_cls, 
+        module_list, 
+        swa_model,
+        criterion_list, 
+        retain_dl, 
+        forget_dl
     )
     
     return unlearned_model
