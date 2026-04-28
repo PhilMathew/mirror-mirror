@@ -1,5 +1,4 @@
 # Mirror, Mirror on the Wall---Have I Forgotten it All?\\A New Framework for Evaluating Machine Unlearning
-Authors: Philip Mathew, Brennon Brimhall, Neil Fendley, Dr. Yinzhi Cao, Dr. Matthew D. Green
 
 ## Installation
 After cloning, there are two major things that should be done.
